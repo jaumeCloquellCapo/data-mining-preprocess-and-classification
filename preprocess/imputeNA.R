@@ -21,6 +21,7 @@ replace_mean_bd_NA <- function(x){
   x <- sapply(x,replace_mean_NA)
 }
 
+
 #Función que imputa con la mediana los valores perdidos de una columna (atributo)
 replace_median_NA <- function(x){
   replace(x, is.na(x), median(x, na.rm = TRUE))
@@ -42,5 +43,11 @@ replace_mode_bd_NA <- function(x){
 }
 
 ## IMPUTACIÓN CON KNN
+#train: train sin la etiqueta
+#test: test
+knn_MV_NA <- function(train, test, k=10){
+  res <- RKEEL::KNN_MV(train, test, k)
+  res$run()
+} 
 
 
