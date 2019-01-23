@@ -43,23 +43,21 @@ replace_mode_bd_NA <- function(x){
 }
 
 ## IMPUTACIÓN CON KNN
-#train: train sin la etiqueta
-#test: test
-knn_MV_NA <- function(train, test, k=10){
-  res <- RKEEL::KNN_MV(train, test, k)
-  res$run()
-  return(res)
-} 
+noNa_train_knn <- knnImputation(train)
+write.csv(noNa_train, file = "../data/notNA_train_knn.csv", sep = ",")
 
-##Generación del archivo con imputación knn
 
-#Normalizamos los datos
-normalized_data <- min_max_db(train,test)
-normalized_train <- data.frame(normalized_data[1])
-normalized_test <- data.frame(normalized_data[2])
+## IMPUTACIÓN CON KMEANS
+#res <- RKEEL::KMeans_MV(train[,-51], test)
+#res$run()
 
-#Quitamos etiqueta
-normalized_train_data <- normalized_train[,1:50]
+#Buscar SVMI
 
-#Imputamos valores
-preprocessed_data <- knn_MV_NA(normalized_train_data, normalized_test)
+## PAQUETE MICE (Multivariate Imputation by Chained Equations)
+
+#Imputación con random forest
+
+#Se puede cambiar el método de estimación 
+#Solo imputa aquellas variables que no estén altamente correladas (MAR)
+miceMod_rf <- mice(train[,-51], method="rf")  # perform mice imputation, based on random forests.
+noNa_train_rf <- complete(miceMod_rf)  # generate the completed data.
