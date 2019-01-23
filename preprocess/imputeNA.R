@@ -48,6 +48,18 @@ replace_mode_bd_NA <- function(x){
 knn_MV_NA <- function(train, test, k=10){
   res <- RKEEL::KNN_MV(train, test, k)
   res$run()
+  return(res)
 } 
 
+##Generación del archivo con imputación knn
 
+#Normalizamos los datos
+normalized_data <- min_max_db(train,test)
+normalized_train <- data.frame(normalized_data[1])
+normalized_test <- data.frame(normalized_data[2])
+
+#Quitamos etiqueta
+normalized_train_data <- normalized_train[,1:50]
+
+#Imputamos valores
+preprocessed_data <- knn_MV_NA(normalized_train_data, normalized_test)
