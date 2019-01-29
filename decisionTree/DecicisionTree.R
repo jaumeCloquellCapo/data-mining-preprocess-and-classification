@@ -4,6 +4,7 @@ library(rstudioapi)
 library(tree)
 library(rJava)
 library(partykit)
+library(dplyr)
 
 # Definimos el path de donde estemos trabajando.
 setwd(dirname(getActiveDocumentContext()$path))
@@ -11,18 +12,35 @@ setwd(dirname(getActiveDocumentContext()$path))
 # Librerias propias
 source("preprocess/lecturaDatos.R")
 source("preprocess/discretizacion.R")
+source("preprocess/NAs.R")
 
-#Lectura del dataset de train y testing
+#Lectura de datos
 dataset <- readData(files = c("train.csv", "test.csv"))
 
-#Tratamiento NA
 
+####################
+##    DEPURACIÓN  ##
+####################
 
-#Discretizamos las variables continuas
-str(dataset$train)
-pruebas <- myDiscretization(dataset$train, print = TRUE)
-str(pruebas)
-pruebas <- myDiscretization(dataset$train, method = 2, print = TRUE)
-str(pruebas)
-pruebas <- myDiscretization(dataset$train, method = 2, print = TRUE)
-str(pruebas)
+# Numero de Missing values
+dataset$train %>% select(everything()) %>% summarise_all(funs(sum(is.na(.))))
+
+# Tatamiento de los missign Values
+dataset$train <- delete_NA(dataset$train)
+
+# TDetección outliers
+
+########################
+##    TRANSFORMACIÓN  ##
+########################
+
+# Normalización ?
+# si aplicamos K-means como métodos de discretización, es necesario normalizar y escalar los datos
+
+  
+#####################
+## DISCRETIZACIÓN  ##
+##################### 
+  
+#Discretizamos las variables continuas con modelos no supervisados
+dataset$train <- myDiscretization(dataset$train, method = 2)
