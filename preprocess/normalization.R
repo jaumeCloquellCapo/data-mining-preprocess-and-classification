@@ -14,6 +14,10 @@ min_max_db <- function(train, test){
 }
 
 
-z_score_bd <- function(x){
-  x <- data.frame(sapply(x, scale))
+z_score_bd <- function(train, test){
+  x <- build_scales(dataSet = train, verbose = TRUE)
+  scaled_train <- fastScale(dataSet = train, scales = x, verbose = TRUE)
+  scaled_test <- fastScale(dataSet = test, scales = x, verbose = TRUE)
+  
+  return(list(scaled_train, scaled_test))
 }
