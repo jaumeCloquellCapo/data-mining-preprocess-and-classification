@@ -43,8 +43,8 @@ replace_mode_bd_NA <- function(x){
 }
 
 ## IMPUTACIÓN CON KNN
-noNa_train_knn <- knnImputation(train)
-write.csv(noNa_train, file = "../data/notNA_train_knn.csv", sep = ",")
+#noNa_train_knn <- knnImputation(train)
+#write.csv(noNa_train, file = "../data/notNA_train_knn.csv", sep = ",")
 
 
 ## IMPUTACIÓN CON KMEANS
@@ -59,5 +59,5 @@ write.csv(noNa_train, file = "../data/notNA_train_knn.csv", sep = ",")
 
 #Se puede cambiar el método de estimación 
 #Solo imputa aquellas variables que no estén altamente correladas (MAR)
-miceMod_rf <- mice(train[,-51], method="rf")  # perform mice imputation, based on random forests.
-noNa_train_rf <- complete(miceMod_rf)  # generate the completed data.
+#miceMod_rf <- mice(train[,-51], method="rf")  # perform mice imputation, based on random forests.
+#noNa_train_rf <- complete(miceMod_rf)  # generate the completed data.
