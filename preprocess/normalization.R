@@ -1,5 +1,7 @@
 ### FICHERO DE FUNCIONES DE NORMALIZACIÓN
 
+require(dataPreparation)
+
 #Función que aplica normalización min-max a toda la base de datos
 min_max_db <- function(train, test){
   for (i in 1:50){

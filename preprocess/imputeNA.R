@@ -8,6 +8,9 @@
 #Librer铆as necesarias
 library(mice)
 require(robCompositions)
+require(Amelia)
+require(randomForest)
+
 
 #Funci贸n que elimina las filas que continen alg煤n atributo con valor NA
 #No se eliminan m谩s de una clase que de otra en proporci贸n
@@ -57,8 +60,8 @@ replace_mode_bd_NA <- function(x){
 }
 
 #Imputaci贸n con randomForest
-impute_rf <- function(formula, x){
-  return(rfImpute(formula, x))
+impute_rf <- function(formula, x, iter = 5){
+  return(rfImpute(formula, x, iter))
 }
 
 #Imputaci贸n con robComposition
@@ -67,4 +70,11 @@ impute_rf <- function(formula, x){
 impute_KNNa <- function(x){
   imputados <- robCompositions::impKNNa(x, primitive=TRUE)
   return(imputados$xImp)
+}
+
+#Imputaci髇 con Amelia <- es r醦ido
+
+impute_amelia <- function(x, iter = 5){
+  imputados <- amelia(x)
+  return(as.data.frame(imputados$imputations[[5]]))
 }
