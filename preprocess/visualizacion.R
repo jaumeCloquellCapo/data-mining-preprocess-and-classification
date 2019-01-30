@@ -1,30 +1,11 @@
-# Visualización de las funciones de densidad de las variables
-
-# Cargamos las librerías que vamos a utilizar
+###################################
+## FUNCIONES PARA VISUALIZACIÓN ##
+###################################
 
 library(ggplot2)
-library(NoiseFiltersR)
-library(Amelia)
-
-# Leemos los datos
-
-datos <- read.csv("train.csv", na.strings = c("?","NA",".",""))
-datos[,51]=as.factor(datos[,51])
-
-# Imputamos con Amelia
-
-imputados_am <- amelia(datos, idvars = "C")
-imputados_am <- as.data.frame(imputados_am$imputations[[5]])
-
-# Filtramos con IPF
-
-filtrados_IPF <- IPF(C ~ ., imputados_am, s = 2)
-filtrados_IPF <- as.data.frame(filtrados_IPF$cleanData)
-
-# Definimos las funciones con las que vamos a graficar las funciones de densidad
+library(grid)
 
 multiplot <- function(..., plotlist=NULL, file, cols=3, layout=NULL) {
-  library(grid)
   
   # Make a list from the ... arguments and plotlist
   plots <- c(list(...), plotlist)
@@ -59,25 +40,32 @@ multiplot <- function(..., plotlist=NULL, file, cols=3, layout=NULL) {
   }
 }
 
-# En los conjuntos de training podemos distinguir entre las distintas clases de C
-# pero en test no
-
 densityplot_train <- function(i, datos){
-  ggplot(datos) + geom_density(data = datos, mapping = aes(x = datos[,i], fill = C), alpha = 0.5)
+  ggplot(datos) + geom_density(data = datos, mapping = aes(x = datos[,i], fill = C), alpha = 0.5)+ xlab(i)
 }
 densityplot_test <- function(i, datos){
   ggplot(datos) + geom_density(data = datos, mapping = aes(x = datos[,i]), alpha = 0.5)
 }
 
-# Los plots de densidad son muy malos aún porque sigue habiendo muchos outliers en los datos
-# <- hay que limpiar mejor
+graficar_variables_train <- function(datos, variables){
+  do.call(multiplot, lapply(variables, densityplot_train, datos))
+}
 
-do.call(multiplot, lapply(1:3, densityplot_train, filtrados_IPF))
+graficar_variables_test <- function(datos, variables){
+  do.call(multiplot, lapply(variables, densityplot_test, datos))
+}
 
 
-# Comparamos con las distribuciones de test
-# También hay mucho ruido, tal vez hay que procesar algo también en test
+# Si queremos guardar los datos en un pdf podemos ejecutar el siguiente bloque
 
-test <- read.csv("test.csv", na.strings = c("?","NA",".",""))
-do.call(multiplot, lapply(3:5, densityplot_test, test))
+
+#pdf("graficos.pdf")
+#do.call(multiplot, lapply(2:10, densityplot_train, final))
+#do.call(multiplot, lapply(11:19, densityplot_train, final))
+#do.call(multiplot, lapply(20:28, densityplot_train, final))
+#do.call(multiplot, lapply(29:37, densityplot_train, final))
+#do.call(multiplot, lapply(38:46, densityplot_train, final))
+#do.call(multiplot, lapply(46:51, densityplot_train, final))
+#dev.off()
+
 
