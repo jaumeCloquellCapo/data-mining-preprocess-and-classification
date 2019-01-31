@@ -41,10 +41,10 @@ multiplot <- function(..., plotlist=NULL, file, cols=3, layout=NULL) {
 }
 
 densityplot_train <- function(i, datos){
-  ggplot(datos) + geom_density(data = datos, mapping = aes(x = datos[,i], fill = C), alpha = 0.5)+ xlab(i)
+  ggplot(datos) + geom_density(data = datos, mapping = aes(x = datos[,i], fill = C), alpha = 0.5) + xlab(i)
 }
 densityplot_test <- function(i, datos){
-  ggplot(datos) + geom_density(data = datos, mapping = aes(x = datos[,i]), alpha = 0.5)
+  ggplot(datos) + geom_density(data = datos, mapping = aes(x = datos[,i]), fill = "#6699CC" , alpha = 0.5) + xlab(i)
 }
 
 graficar_variables_train <- function(datos, variables){
