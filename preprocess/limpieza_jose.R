@@ -2,6 +2,7 @@
 
 library(randomForest)
 library(NoiseFiltersR)
+library(kknn)
 
 out_univ <- function(i, train){
   x = train[,i]
@@ -12,7 +13,7 @@ out_univ <- function(i, train){
 }
 
 filtrar_univ <- function(train){
-  sapply(1:50, train)
+  sapply(1:50, out_univ, train)
 }
 
 filtrar_IPC <- function(train){
@@ -28,4 +29,26 @@ limpieza_total_train <- function(train, iter = 1){
     train <- rfImpute(C ~., train, iter = 3)
   }
   return(train)
+}
+
+# NO FUNCIONA AÚN
+
+outlier_imput <- function(i, test, train){
+  x <- train[,i]
+  y <- test[,i]
+  cuantiles <- quantile(x, c(0.25, 0.75))
+  iqr <- IQR(x)
+  y[y < cuantiles[1]-3*iqr | y > cuantiles[2]+3*iqr ] <- NA
+  formula <- paste("X", i, "~.", sep = "")
+  modelo <- kknn(formula, train, test)
+  y[is.na(y)] <- modelo$fitted.values[is.na(y)]
+  return(y)
+}
+
+limpieza_total_test <- function(train, test, iter = 1){
+  for(i in 1:iter){
+    test <- sapply(1:50, outlier_imput, test, train)
+    
+  }
+  
 }
