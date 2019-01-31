@@ -47,7 +47,9 @@ outlier_imput <- function(i, test, train){
 
 limpieza_total_test <- function(train, test, iter = 1){
   for(i in 1:iter){
-    test <- sapply(1:50, outlier_imput, test, train)
+    test <- as.data.frame(sapply(1:50, outlier_imput, test, train))
   }
-  return(as.data.frame(test))
+  colnames(test) <- paste("X",1:50, sep = "")
+  
+  return(test)
 }
