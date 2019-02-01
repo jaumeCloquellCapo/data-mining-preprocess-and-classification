@@ -26,7 +26,9 @@ dataset$train$C <- as.factor(dataset$train$C)
 dataset$train %>% select(everything()) %>% summarise_all(funs(sum(is.na(.))))
 
 # Tatamiento de los missign Values
-dataset$train <- delete_NA(dataset$train)
+dataset$train <- na.mice(dataset$train)
+
+# Selección de variables, reducción de dimensionalidad
 
 # TDetección outliers
 dataset$train <- delete_ruidoCVCF(dataset$train)
@@ -49,7 +51,7 @@ dataset$train[, -c(dim(dataset$train)[2] - 1)] <- predict(valoresPreprocesados,d
 ##################### 
   
 #Discretizamos las variables continuas con modelos no supervisados
-dataset$train <- myDiscretization(dataset$train, method = 2)
+dataset$train[,1] <- myDiscretization(dataset$train, method = 2)
 
 #####################
 ##     MODELO     ##
