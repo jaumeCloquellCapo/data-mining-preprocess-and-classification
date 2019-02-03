@@ -8,7 +8,7 @@ out_univ <- function(i, train){
   x = train[,i]
   cuantiles <- quantile(x, c(0.25,0.75))
   iqr = IQR(x)
-  x[x < cuantiles[1]-3*iqr | x > cuantiles[2]+3*iqr ] <- NA
+  x[x < cuantiles[1]-5*iqr | x > cuantiles[2]+5*iqr ] <- NA
   return(x)
 }
 
@@ -38,7 +38,7 @@ outlier_imput <- function(i, test, train){
   y <- test[,i]
   cuantiles <- quantile(x, c(0.25, 0.75))
   iqr <- IQR(x)
-  y[y < cuantiles[1]-3*iqr | y > cuantiles[2]+3*iqr ] <- NA
+  y[y < cuantiles[1]-5*iqr | y > cuantiles[2]+5*iqr ] <- NA
   formula <- paste("X", i, "~.", sep = "")
   modelo <- kknn(formula, train, test)
   y[is.na(y)] <- modelo$fitted.values[is.na(y)]
@@ -48,8 +48,7 @@ outlier_imput <- function(i, test, train){
 limpieza_total_test <- function(train, test, iter = 1){
   for(i in 1:iter){
     test <- as.data.frame(sapply(1:50, outlier_imput, test, train))
+    colnames(test) <- paste("X",1:50, sep = "")
   }
-  colnames(test) <- paste("X",1:50, sep = "")
-  
   return(test)
 }
