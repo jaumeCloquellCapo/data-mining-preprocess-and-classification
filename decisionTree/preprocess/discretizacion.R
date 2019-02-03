@@ -5,7 +5,7 @@ require(arules)
 # methods: 1 CAIM, 2 CACC, 3 AMEVA
 myDiscretization <- function (dataset, method = 1) {
   for (col in colnames(dataset)) {
-    p  apply(row, 2, function(x) {
+    apply(row, 2, function(x) {
       print(x)
       #mastercuts <- arules::discretize(x, method = "interval", categories = 4, onlycuts = T)
       #dataset[[x]] <- as.numeric(cut(dataset[[x]], breaks = mastercuts))
