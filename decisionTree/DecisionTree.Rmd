@@ -92,12 +92,14 @@ train.imputed<-knnImputation(train.imputed,k=3,scale = T,meth = "weighAvg")
 
 # Entrenando nuestro modelo
 
-Creamos los distintos árboles (son y sin poda)
+##Creamos los distintos árboles (son y sin poda)
 ```{r}
 set.seed(81)
 trees <- crear_arbol(train.imputed, "C", withPartitions = TRUE)
 ```
 
+
+## Podamos el árbol
 
 ```{r}
 print_diagnostic(trees)

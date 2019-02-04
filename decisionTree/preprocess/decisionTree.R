@@ -150,17 +150,17 @@ obtener_diagnostico <- function(tree, sets) {
   return (results)
 } 
 
-print_diagnostic <- function (trees) {
+print_diagnostic <- function (trees, sets) {
   results <- list()
   
-  results[[const$treeRpart]] <- obtener_diagnostico(trees[[const$treeRpart]], result[[const$sets]])
-  results[[const$treeC50]] <- obtener_diagnostico(trees[[const$treeC50]], result[[const$sets]])
-  results[[const$treeTree]] <- obtener_diagnostico(trees[[const$treeTree]], result[[const$sets]])
+  results[[const$treeRpart]] <- obtener_diagnostico(trees[[const$treeRpart]], trees[[const$sets]])
+  results[[const$treeC50]] <- obtener_diagnostico(trees[[const$treeC50]], trees[[const$sets]])
+  results[[const$treeTree]] <- obtener_diagnostico(trees[[const$treeTree]], trees[[const$sets]])
   
   #results[[const$treeGradienrtBoostedMachine]] <- entrenar_arbol_gradientBoostingMachine(results[[const$sets]], objetivo, predictores)
-  results[[const$treeForest]] <- obtener_diagnostico(trees[[const$treeForest]], result[[const$sets]])
-  results[[const$treeBagging]] <- obtener_diagnostico(trees[[const$treeBagging]], result[[const$sets]])
-  results[[const$treeC45]] <- obtener_diagnostico(trees[[const$treeC45]], result[[const$sets]])
+  results[[const$treeForest]] <- obtener_diagnostico(trees[[const$treeForest]], trees[[const$sets]])
+  results[[const$treeBagging]] <- obtener_diagnostico(trees[[const$treeBagging]], trees[[const$sets]])
+  results[[const$treeC45]] <- obtener_diagnostico(trees[[const$treeC45]], trees[[const$sets]])
   
   return (results)
 }
