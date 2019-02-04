@@ -13,6 +13,10 @@ library(partykit)
 library(dplyr)
 library(party)
 library(caret)
+library(ipred)
+library(RWeka)
+library(randomForest)
+library(gbm)
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
@@ -88,156 +92,16 @@ train.imputed<-knnImputation(train.imputed,k=3,scale = T,meth = "weighAvg")
 
 # Entrenando nuestro modelo
 
-```{r}
-## constants
-const <- list(
-  "training" = "training",
-  "test"    = "test",
-  "prediction" = "prediction",
-  "prunedPrediction" = "prunedPrediction",
-  "class" = "class",
-  "treeRpart" = "treeRpart",
-  "treeTree" = "treeTree",
-  "treeC50" = "treeC50",
-  "model" = "model",
-  "referencia" = "referencia",
-  "sets" = "sets",
-  "diagnostic" = "diagnostic",
-  "postPrunedModel" = "postprunedModel",
-  "prePrunedModel" = "preprunedModel",
-  "accuracy" = "accuracy",
-  "error" = "error"
-)
-
-## methods
-crear_sets <- function(datos, proporcion = .5) {
-  results <- list()
-  
-  results[[const$training]] <- sample_frac(datos, proporcion)
-  results[[const$test]] <- setdiff(datos, results[[const$training]])
-  
-  return (results)
-}
-
-generar_formula <- function(objetivo, predictores = ".") {
-  if(length(predictores > 1)) {
-    predictores <- paste0(predictores, collapse = "+")
-  }
-  formula <- paste0(objetivo, " ~ ", predictores) %>% as.formula()
-  return (formula)
-}
-
-entrenar_arbol_rpart <- function(sets, objetivo, predictores = ".") {
-  
-  results <- list()
-  results[[const$model]] <- rpart(data = sets[[const$training]], formula = generar_formula(objetivo, predictores = predictores))
-  results[[const$prediction]] <- predict(results[[const$model]], sets[[const$test]], type = "class")
-  results[[const$referencia]] <- sets[[const$test]][[objetivo]]
-  
-  return (results)
-}
-
-
-entrenar_arbol_c50 <- function(sets, objetivo, predictores = ".") {
-  
-  results <- list()
-  results[[const$model]] <- C5.0(formula = generar_formula(objetivo, predictores = predictores), data = sets[[const$training]])
-  results[[const$prediction]] <- predict(results[[const$model]], sets[[const$test]], type = "class")
-  results[[const$referencia]] <- sets[[const$test]][[objetivo]]
-  
-  return (results)
-}
-
-entrenar_arbol_tree <- function(sets, objetivo, predictores = ".") {
-  
-  results <- list()
-  results[[const$model]] <- tree(formula = generar_formula(objetivo, predictores = predictores), data = sets[[const$training]])
-  results[[const$prediction]] <- predict(results[[const$model]], sets[[const$test]], type = "class")
-  results[[const$referencia]] <- sets[[const$test]][[objetivo]]
-  
-  return (results)
-}
-
-obtener_diagnostico <- function(tree, sets) {
-  results <- list()
-  
-  results[[const$accuracy]] <- sum(tree[[const$prediction]] == sets[[const$test]]$C)/length(tree[[const$prediction]])
-  results[[const$error]] <- min(sum(labels == 1), sum(labels == 0))
-
-  return (results)
-} 
-
-crear_arbol <- function(datos, objetivo, predictores = ".") {
-  results <- list()
-  
-  results[[const$sets]] <- crear_sets(datos)
-  results[[const$treeRpart]] <- entrenar_arbol_rpart(results[[const$sets]], objetivo, predictores)
-  results[[const$treeC50]] <- entrenar_arbol_c50(results[[const$sets]], objetivo, predictores)
-  results[[const$treeTree]] <- entrenar_arbol_tree(results[[const$sets]], objetivo, predictores)
-  
-  #results[[const$diagnostic]] <- obtener_diagnostico(results[[const$tree]], results[[const$sets]])
-
-  #results[[const$postPrunedModel]] <- entrenar_arbol_con_postprunning(results[[const$tree]][[const$model]], results[[const$sets]], objetivo, predictores, cp = 0.01)
-  #results[[const$prePrunedModel]] <- entrenar_arbol_con_preprunning(results[[const$sets]], objetivo, predictores, cp = 0.01)
-  #results[[const$diagnostic]] <- obtener_diagnostico(results[[const$tree]], objetivo, mi_cp)
-  
-  return (results)
-}
-
-
-entrenar_arbol_con_postprunning <- function(model, sets, objetivo, predictores = ".", cp = 0.01) {
-  
-  results <- list()
-  results[[const$model]]<-prune(model, cp = cp)
-  results[[const$prediction]] <- predict(results[[const$model]], sets[[const$test]], type = "class")
-  results[[const$referencia]] <- sets[[const$test]][[objetivo]]
-  
-  return (results)
-} 
-
-entrenar_arbol_con_preprunning <- function(sets, objetivo, predictores = ".", cp = 0) {
-  
-
-  results <- list()
-  results[[const$model]] <- rpart(data = sets[[const$training]], formula = generar_formula(objetivo, predictores = predictores), control = rpart.control(cp = cp, maxdepth = 8,minsplit = 100))
-  results[[const$prediction]] <- predict(results[[const$model]], sets[[const$test]], type = "class")
-  results[[const$referencia]] <- sets[[const$test]][[objetivo]]
-  
-  return (results)
-} 
-
-print_tree <- function(objetivo, dtree) {
-  fancyRpartPlot(dtree[[const$model]], main = "Adult Income Level")
-}
-```
-
 Creamos los distintos árboles (son y sin poda)
 ```{r}
-result <- crear_arbol(train.imputed, "C")
-```
-
-```{r}
-summary(result[[const$treeTree]][[const$model]])
-cv.tree(result[[const$treeTree]][[const$model]], FUN = prune.misclass)
+set.seed(81)
+trees <- crear_arbol(train.imputed, "C", withPartitions = TRUE)
 ```
 
 
 ```{r}
-
-rpart.plot((result[[const$treeC50]][[const$model]]))
+print_diagnostic(trees)
 ```
-
-```{r}
-plot(result[[const$treeTree]][[const$model]])
-text(result[[const$treeTree]][[const$model]], pretty=0)
-```
-
-
-```{r}
-plot(result[[const$treeRpart]][[const$model]])
-text(result[[const$treeRpart]][[const$model]], pretty=0)
-```
-
 
 ********************
 
