@@ -105,6 +105,14 @@ trees <- crear_arbol(train.imputed, "C", withPartitions = TRUE)
 print_diagnostic(trees)
 ```
 
+```{r}
+plot(trees[[const$treeBagging]][[const$model]])
+```
+```{r}
+trees[[const$treeBagging]][[const$pre]]
+```
+
+
 ********************
 
 
