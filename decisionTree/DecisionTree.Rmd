@@ -67,35 +67,52 @@ apply(train,2,function(x){
 ```
 # Tatamiento de los missign Values
 
-opcion 1
-
-
 ```{r}
 ## If a variable has less than 50% missing values, imputation or prediction might be a viable option.
 train.imputed <- subset(train, select = -c(X9))
 ```
 
+If a variable has less than 50% missing values, imputation or prediction might be a viable option.
+
+Imputation with mean / median / mode
 ```{r}
-## If a variable has more than 50% missing values, drop the variable because you don’t have enough information to ascertain anything useful. 
-set.seed(81)
-iris.mis <- prodNA(train.imputed, noNA = 0.2)
-summary(iris.mis)
-iris.imp <- missForest(iris.mis, xtrue = iris, verbose = TRUE)
+library(Hmisc)
+train.imputed.mean <- train.imputed
+train.imputed.mode <- train.imputed
+train.imputed.median <- train.imputed
+for (i in length(train.imputed) -1 ) {
+  train.imputed.mean[,i] <- impute(train.imputed.mean[,i], mean)
+  train.imputed.mode[,i] <- impute(train.imputed.mode[,i], mode)
+  train.imputed.median[,i] <- impute(train.imputed.median[,i], median) 
+}
 ```
+
+Prediction
+kNN Imputation
 
 ```{r}
 library(DMwR)
-train.imputed<-knnImputation(train.imputed,k=3,scale = T,meth = "weighAvg")
+require(robCompositions)
+train.imputed.knn <- train.imputed
+train.imputed.knn[, !names(train.imputed.knn) %in% "C"] <- knnImputation(train.imputed.knn[, !names(train.imputed.knn) %in% "C"])  # perform knn imputation.
 ```
 
+Random Forest
+
+```{r}
+library(mice)
+train.imputed.rf <- train.imputed
+miceMod <- mice(train.imputed.rf[, !names(train.imputed.rf) %in% "C"], method="rf")  # perform mice imputation, based on random forests.
+train.imputed.rf[, !names(train.imputed.rf) %in% "C"] <- complete(miceMod)  # generate the completed data.
+```
 
 
 # Entrenando nuestro modelo
 
-##Creamos los distintos árboles (son y sin poda)
+##Creamos los distintos árboles
 ```{r}
 set.seed(81)
-trees <- crear_arbol(train.imputed, "C", withPartitions = TRUE)
+trees <- crear_arbol(train.imputed.rf, "C", withPartitions = FALSE)
 ```
 
 
