@@ -1,17 +1,23 @@
 
 # Funcion para lectura de archivo.
-readData <- function(path = "../data/", files = c("train.csv", "test.csv")){
+readData <- function(path = "../data/", files = c("train.csv", "test.csv"), fileNames = c(){
   # inicializamos la variable de respuesta
   datasets <- list()
-  datasetValues <- c()
-  datasetNames <- c()
+  #datasetValues <- c()
+  #datasetNames <- c()
   
+  index <- 1
   for(file in files){
     # se compone el path completo
     pathCompleto <- paste(path,file,sep="")
     # se leen los datos
     datasetValue <- read.csv(pathCompleto, header = T, sep = ",", na.strings = c("?","NA",".",""))
-    datasetName <- unlist(strsplit(file, split='.', fixed=TRUE))[1]
+    if  (length(fileNames) == length(files)) {
+      datasetName <- fileNames[index]
+    } else {
+      datasetName <- unlist(strsplit(file, split='.', fixed=TRUE))[1]
+    }
+    index <- index + 1 
     datasets[[datasetName]] <- datasetValue
   }
   
