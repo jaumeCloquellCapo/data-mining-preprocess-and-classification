@@ -31,7 +31,7 @@ limpieza_total_train <- function(train, iter = 1){
   return(train)
 }
 
-# NO FUNCIONA AÚN
+# NO FUNCIONA A?N
 
 outlier_imput <- function(i, test, train){
   x <- train[,i]
@@ -51,6 +51,7 @@ limpieza_total_test <- function(train, test, iter = 1){
     colnames(test) <- paste("X",1:50, sep = "")
   }
   return(test)
+<<<<<<< HEAD
 }
 
 limpieza_total_train_2 <- function(train, iter = 1){
@@ -62,3 +63,6 @@ limpieza_total_train_2 <- function(train, iter = 1){
   train <- filtrar_IPC(train)
   return(train)
 }
+=======
+}
+>>>>>>> 08dc6f0ce99ae620386759c7b4f59a0a61703bc7
