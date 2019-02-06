@@ -1,6 +1,6 @@
-
+source("preprocess/constants.R")
 # Funcion para lectura de archivo.
-readData <- function(path = "../data/", files = c("train.csv", "test.csv"), fileNames = c(){
+readData <- function(path = "../data/", files = c("train.csv", "test.csv"), fileNames = c(const$train, const$test)){
   # inicializamos la variable de respuesta
   datasets <- list()
   #datasetValues <- c()

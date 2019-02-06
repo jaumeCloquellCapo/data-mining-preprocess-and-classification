@@ -9,29 +9,7 @@ library(ipred)
 library(MASS)
 library(TH.data)
 library(C50)
-
-const <- list(
-  "train" = "train",
-  "test"    = "test",
-  "prediction" = "prediction",
-  "prunedPrediction" = "prunedPrediction",
-  "class" = "class",
-  "treeRpart" = "treeRpart",
-  "treeTree" = "treeTree",
-  "treeC50" = "treeC50",
-  "treeC45" = "treeC45",
-  "treeGradienrtBoostedMachine" = "treeGradienrtBoostedMachine",
-  "treeForest" = "treeForest",
-  "treeBagging" = "treeBagging",
-  "model" = "model",
-  "referencia" = "referencia",
-  "sets" = "sets",
-  "diagnostic" = "diagnostic",
-  "postPrunedModel" = "postprunedModel",
-  "prePrunedModel" = "preprunedModel",
-  "accuracy" = "accuracy",
-  "error" = "error"
-)
+source("preprocess/constants.R")
 
 crear_sets <- function(datos, proporcion = .7) {
   results <- list()

@@ -35,9 +35,9 @@ for (file in list.files("preprocess")) {
 ## Load Data
 ```{r}
 #Lectura de datos
-original.dataset <- readData(files = c("train.csv", "test.csv"))
+original.dataset <- readData()
 train <- original.dataset$train
-train$C <- as.factor(train$C)
+#train$C <- as.factor(train$C)
 ```
 
 # EDA
@@ -52,20 +52,59 @@ str(train) #Todas las variables son numéricas
 table(train$C)
 ```
 
-## Missing Values
+## Missing Values http://eio.usc.es/pub/mte/descargas/ProyectosFinMaster/Proyecto_940.pdf
+## opciones a estuduiar MissingDataGUI(visualización), amelia(imputación multiple), vim(visualizacion), mice (imputación múltiple utilizando Fully Conditionally Specification)
 
 ```{r}
-apply(train,2,function(x){
-  sum(is.na(x))/length(x)*100
-}) %>% sort
-
-## Todas la variables tienen N.A [20%, 54%]
-# Variables con más N.A
-#X9 -> 54%
-#X32 -> 44%
-#X40 -> 41%
+colSums(is.na(train))
 ```
+
+## Clasificación de los datos perdidos
+
+MCAR (Missing Completely At Random): La probabilidad de que una respuesta a una variable sea dato faltante es independiente tanto del valor de esta variable como del valor de otras variables del conjunto de datos.
+
+MAR (Missing At Random): La probabilidad de que una respuesta sea dato faltante es independiente de los valores de la misma variable pero es dependiente de los valores de otras variables del conjunto de datos.
+
+NMAR (Not Missing At Random): La probabilidad de que una respuesta a una variable sea dato faltante es dependiente de los valores de la variable.
+
+```{r}
+library(VIM)
+library(Amelia)
+library(mice)
+library(ggplot2)
+aggr(train,numbers=T,sortVar=T)
+```
+
+
+
 # Tatamiento de los missign Values
+
+```{r}
+library(missMDA)
+nb <- estim_ncpPCA(train,method.cv = "Kfold", verbose = FALSE) # estimate the number of components from incomplete data
+#(available methods include GCV to approximate CV)
+nb$ncp #2
+plot(0:5, nb$criterion, xlab = "nb dim", ylab = "MSEP")
+res.comp <- imputePCA(train, ncp = nb$ncp) # iterativePCA algorithm
+res.comp$completeObs[1:3,] # the imputed data set
+
+imp <- cbind.data.frame(res.comp$completeObs,train[,C])
+res.pca <- PCA(imp, quanti.sup = 1, quali.sup = 12, ncp = nb$ncp, graph=FALSE)
+plot(res.pca, hab=12, lab="quali");
+```
+```{r}
+ntrees=100
+iris.imp = missForest(train, variablewise=TRUE,
+ntree=ntrees)
+iris.imp$OOB
+```
+
+```{r}
+imp.mice <- mice(train, m = 100, defaultMethod = "norm.boot") # the variability of the parameters is obtained 
+res.MIPCA <- MIPCA(don, ncp = 2, nboot = 100) 
+res.MIPCA
+```
+
 
 ```{r}
 ## If a variable has less than 50% missing values, imputation or prediction might be a viable option.
@@ -75,12 +114,13 @@ train.imputed <- subset(train, select = -c(X9))
 If a variable has less than 50% missing values, imputation or prediction might be a viable option.
 
 Imputation with mean / median / mode
+
 ```{r}
 library(Hmisc)
-train.imputed.mean <- train.imputed
-train.imputed.mode <- train.imputed
-train.imputed.median <- train.imputed
-for (i in length(train.imputed) -1 ) {
+train.imputed.mean <- train
+train.imputed.mode <- train
+train.imputed.median <- train
+for (i in length() -1 ) {
   train.imputed.mean[,i] <- impute(train.imputed.mean[,i], mean)
   train.imputed.mode[,i] <- impute(train.imputed.mode[,i], mode)
   train.imputed.median[,i] <- impute(train.imputed.median[,i], median) 
@@ -88,6 +128,18 @@ for (i in length(train.imputed) -1 ) {
 ```
 
 Prediction
+
+
+```{r}
+imputed_Data <- mice(subset(train, select = -c(C)), m=5, maxit = 50, method = 'pmm', seed = 500)
+summary(imputed_Data)
+```
+```{r}
+completeData <- complete(imputed_Data,5)
+colSums(is.na(completeData))
+```
+
+
 kNN Imputation
 
 ```{r}
