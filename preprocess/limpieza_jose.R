@@ -31,7 +31,7 @@ limpieza_total_train <- function(train, iter = 1){
   return(train)
 }
 
-# NO FUNCIONA AÚN
+# NO FUNCIONA A?N
 
 outlier_imput <- function(i, test, train){
   x <- train[,i]

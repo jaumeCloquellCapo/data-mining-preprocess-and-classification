@@ -2,74 +2,87 @@
 
 ## FILTERS
 
+##OJO!!! se considera que la etiqueta está en la primera posicion (por el preprocesamiento de JA)
+#cambiar si hace falta
+
 library(FSelector)
 library(mlbench)
 
 #Chi.squared
 
-FS_chi.squared <- function(formula,x,k=5){
-  weights <- FSelector::chi.squared(formula,x)
+FS_chi.squared <- function(formula,train, test,k=5){
+  weights <- FSelector::chi.squared(formula,train)
   subset <- FSelector::cutoff.k(weights,k)
 
-  Y <- x[,51]
-  return(cbind(x[,subset], Y))
+  Y <- train[,1]
+  train <- cbind(train[,subset],Y)
+  test <- test[,subset]
+  return(list(train = train, test = test))
 }
 
 #Correlación de Perason
-FS_linear_correlation <- function(formula, x, k=5){
+FS_linear_correlation <- function(formula, train, test, k=5){
   x[,51] <- as.numeric(x[,51])-1
-  weights <- FSelector::linear.correlation(formula,x)
+  weights <- FSelector::linear.correlation(formula,train)
   subset <- FSelector::cutoff.k(weights,k)
   
-  Y <- x[,51]
-  return(cbind(x[,subset], Y))
+  Y <- train[,1]
+  train <- cbind(train[,subset],Y)
+  test <- test[,subset]
+  return(list(train = train, test = test))
 }
 
 #Correlación de Spearman
-FS_rank_correlation <- function(formula, x, k=5){
-  x[,51] <- as.numeric(x[,51])-1
-  weights <- FSelector::rank.correlation(formula,x)
+FS_rank_correlation <- function(formula, train, test, k=5){
+  weights <- FSelector::rank.correlation(formula,train)
   subset <- FSelector::cutoff.k(weights,k)
   
-  Y <- x[,51]
-  return(cbind(x[,subset], Y))
+  Y <- train[,1]
+  train <- cbind(train[,subset],Y)
+  test <- test[,subset]
+  return(list(train = train, test = test))
 }
 
 ## Basados en entropía
-FS_information_gain <- function(formula, x, k=5){
-  x[,51] <- as.numeric(x[,51])-1
-  weights <- FSelector::information.gain(formula,x)
+FS_information_gain <- function(formula, train, test, k=5){
+  weights <- FSelector::information.gain(formula,train)
   subset <- FSelector::cutoff.k(weights,k)
   
-  Y <- x[,51]
-  return(cbind(x[,subset], Y))
+  Y <- train[,1]
+  train <- cbind(train[,subset],Y)
+  test <- test[,subset]
+  return(list(train = train, test = test))
 }
 
-FS_gain_ratio <- function(formula, x, k=5){
-  x[,51] <- as.numeric(x[,51])-1
-  weights <- FSelector::gain.ratio(formula,x)
+FS_gain_ratio <- function(formula, train, test, k=5){
+  weights <- FSelector::gain.ratio(formula,train)
   subset <- FSelector::cutoff.k(weights,k)
   
-  Y <- x[,51]
-  return(cbind(x[,subset], Y))
+  Y <- train[,1]
+  train <- cbind(train[,subset],Y)
+  test <- test[,subset]
+  return(list(train = train, test = test))
 }
 
-FS_symmetrical_uncertainty <- function(formula, x, k=5){
-  x[,51] <- as.numeric(x[,51])-1
-  weights <- FSelector::symmetrical.uncertainty(formula,x)
+FS_symmetrical_uncertainty <- function(formula, train, test, k=5){
+  weights <- FSelector::symmetrical.uncertainty(formula,train)
   subset <- FSelector::cutoff.k(weights,k)
   
-  Y <- x[,51]
-  return(cbind(x[,subset], Y))
+  Y <- train[,1]
+  train <- cbind(train[,subset],Y)
+  test <- test[,subset]
+  return(list(train = train, test = test))
 }
 
 #Relief
-FS_relief <- function(formula, x, k=5, m=20){
-  weights <- FSelector::relief(formula,x, neighbours.count = k, sample.size = m)
+FS_relief <- function(formula, train, test, k=5, m=20){
+  weights <- FSelector::relief(formula,train, neighbours.count = k, sample.size = m)
   subset <- FSelector::cutoff.k(weights,k)
   
-  Y <- x[,51]
-  return(cbind(x[,subset], Y))
+  Y <- train[,1]
+  train <- cbind(train[,subset],Y)
+  test <- test[,subset]
+  return(list(train = train, test = test))
 }
 
 ## WRAPERS
