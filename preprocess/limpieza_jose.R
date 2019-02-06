@@ -52,3 +52,13 @@ limpieza_total_test <- function(train, test, iter = 1){
   }
   return(test)
 }
+
+limpieza_total_train_2 <- function(train, iter = 1){
+  train <- rfImpute(C ~ ., train, iter = 3)
+  for(i in 1:iter){
+    train[,2:51] <- filtrar_univ(train[,2:51])
+    train <- rfImpute(C ~., train, iter = 3)
+  }
+  train <- filtrar_IPC(train)
+  return(train)
+}
