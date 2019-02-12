@@ -75,6 +75,6 @@ impute_KNNa <- function(x){
 #Imputación con Amelia <- es rápido
 
 impute_amelia <- function(x, iter = 5){
-  imputados <- amelia(x)
+  imputados <- amelia(x, idvars = "C")
   return(as.data.frame(imputados$imputations[[5]]))
 }
