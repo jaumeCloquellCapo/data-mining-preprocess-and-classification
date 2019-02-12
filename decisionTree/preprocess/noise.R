@@ -31,3 +31,12 @@ clean_dataset <- function(train, iter = 1){
   }
   return(train)
 }
+
+
+ipfFilter <- function (data) {
+  data.outlier <- list()
+  trainIPF <- data
+  trainIPF[,dim(data)[2]] <- factor(trainIPF[,dim(data)[2]])
+  trainIPF <- IPF(C ~., trainIPF, consensus = TRUE, s=2)
+  return(trainIPF$cleanData)
+}

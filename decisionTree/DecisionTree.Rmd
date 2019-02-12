@@ -36,188 +36,533 @@ for (file in list.files("preprocess")) {
 ```{r}
 #Lectura de datos
 original.dataset <- readData()
+#original.dataset$train[,-1] <- scale(original.dataset$train[,-1])
+#original.dataset$test[,-1] <- scale(original.dataset$test[,-1])
+
 train <- original.dataset$train
+test <- original.dataset$test
 #train$C <- as.factor(train$C)
 ```
 
-# EDA
+
+# 1. Definición del dataset 
+
+
+# 2. Proceso exploratorio y pre-procesado
+
+El capítulo comienza detallando el proceso exploratorio inicial para continuar con el grueso de la memoria, la especificación de los procesos de pre-procesado llevados a cabo y la solución final aportada.
+
+## 2.1 Proceso exploratorio
+
+En esta sección detallamos el proceso exploratorio seguido para obtener más información del problema y de los datos que tenemos entre manos. Los pasos seguidos en este proceso serían:
+
+### 2.1.1 Estudio de los datos y dimensiones
+
+El primer paso para enfrentarnos a los datos era conocer la dimensionalidad y el tipo de datos. Por ello, hicimos uso de los comandos describe y str, para comprobar como eran estos datos y sus distribuciones.
 
 ```{r}
-#Dimensiones de la train
-summary(train) ## Todas las variables tienen Missing Values y además nos ncontramos cpn outliers ne la mayoría de ellos. x1,x2,x3...
-dim(train) #Tenemos 9144 instancias con 50 atributos y una clase binaria.
-str(train) #Todas las variables son numéricas
-
-#1. DESBALANCEO
-table(train$C)
+head(train)
 ```
 
-## Missing Values http://eio.usc.es/pub/mte/descargas/ProyectosFinMaster/Proyecto_940.pdf
-## opciones a estuduiar MissingDataGUI(visualización), amelia(imputación multiple), vim(visualizacion), mice (imputación múltiple utilizando Fully Conditionally Specification)
+El conjunto de datos de entrenamiento está formado por 9144 observaciones con 51 variables además de la clase catalogada como C y que puede tomar dos valores distintos (0,1). Las variables de entrenamiento, tienen todas valores numéricos continuos.
 
-```{r}
-colSums(is.na(train))
-```
 
-## Clasificación de los datos perdidos
+### 2.1.2 Valores perdidos
 
-MCAR (Missing Completely At Random): La probabilidad de que una respuesta a una variable sea dato faltante es independiente tanto del valor de esta variable como del valor de otras variables del conjunto de datos.
+Al usar estudiar las distribuciones de los datos en el punto anterior descubrimos la existencia de valores perdidos en todas las variables. Para ver si este problema era muy acentuado se creó una función que nos ofrece el número de valores perdidos de un dataset por variables con diversos estadísticos. Tras obtener estos valores se representaron gráficamente para ver cuantos eran estos valores perdidos en función de la variable y el conjunto de train (figura 3.1).
 
-MAR (Missing At Random): La probabilidad de que una respuesta sea dato faltante es independiente de los valores de la misma variable pero es dependiente de los valores de otras variables del conjunto de datos.
-
-NMAR (Not Missing At Random): La probabilidad de que una respuesta a una variable sea dato faltante es dependiente de los valores de la variable.
+Este gráfico nos llevo a comprobar que los valores perdidos no siguen patrones sino que son valores perdidos que parecen haber sido añadidos aleatoriamente o pertenecer a fallos en la toma de datos. La variable X9, es la que tiene un mayor número de missing values, seguidos por X40 y X13. A pesar de todo, no existe una diferencia significativa entre ello.
 
 ```{r}
 library(VIM)
-library(Amelia)
-library(mice)
+library(finalfit)
+aggr_plot <- aggr(train, numbers=TRUE, sortVars=TRUE, labels=names(train), cex.axis=.7, gap=3, ylab=c("Histogram of missing data Train","Pattern"), prop = T)
+train %>% missing_plot()
+```
+
+La siguiente secuencia de acciones determina el porcentaje de variables con valores perdidos en una instancia. Este porcentaje sirve para descartar instancias en que el porcentaje supera un cierto límite. Como observamos en los resultados todas las instancias necesitan ser filtradas.
+
+```{r}
+library(parallel)
+system.time(res1 <- apply(train, 1, function(x) sum(is.na(x))) / ncol(train) * 100)
+cores <- detectCores()
+cluster <- makeCluster(cores-2)
+system.time(res2 <- parRapply(cluster, train, function(x) sum(is.na(x)))/ncol(train)*100)
+names(res2) <- NULL
+stopCluster(cluster)
+mal <- (res1 > 5)
+filtrados <- train[!mal,]
+cat("Instancias archivo original: ",nrow(train)," instancias en filtrado: ",nrow(filtrados),"\n")
+
+#writeData(filtrados, path = "datosFiltrados/", "datosFiltrados")
+```
+
+
+###  2.1.3 Correlaciones: 
+
+El tener tantas variables  y tanta presencia de valores perdidos hizo interesante la obtención de correlaciones para comprobar si podemos eliminar variables en pos de otras o imputar los valores perdidos con los de otra variable muy correlada. Para ello, usamos la función corrplot. El resultado podemos verlo en la figura 3.4 y descubrimos que la variable x41 tiene correlacion de 1 con la x48 siendo una el resultado del producto de la otra.
+
+```{r}
+# Compruebo los valores perdidos mediante mi función
+perdidosTrain <- valoresPerdidos(train)
+perdidosTest <- valoresPerdidos(test)
+variablesNumericas <- sapply(1:dim(train)[2], function(x) is.numeric(train[,x]))
+correlaciones <- cor(train[-perdidosTrain$`Instancias con perdidos`,variablesNumericas])
+correlacionesFuertes <- sapply(1:dim(correlaciones)[2], function(x) any(correlaciones[-x,x]>0.4 | correlaciones[-x,x]<(-0.4) ))
+library(corrplot)
+corrplot::corrplot(correlaciones[correlacionesFuertes,correlacionesFuertes], type="lower", diag = FALSE)
+
+
+```
+
+
+```{r}
+library(GGally)
+## Create data frame indicating missingness by 1
+x <- as.data.frame(abs(is.na(train)))
+## Select columns with some (but not all) missing values
+y <- x[,sapply(x, sd) > 0]
+
+## Create a correlation matrix: Variables missing together have high correlation
+cor(y)
+cor(train, y, use = "pairwise.complete.obs")
+ggcorr(train, method = c("pairwise.complete.obs", "pearson"))
+```
+
+###  2.1.4 Outliers: 
+
+Dado el volumen del problema, se llevó a cabo un estudio de outliers univariate básico basado en distancia intercuartil (IQR). Para que este proceso obtenga buenos resultados, se escalaron las variables y se analizaron solo aquellas cuyo dominio es continuo. Los resultados para las variables 1:30 pueden verse en el gráfico 3.5 mientras que las variables 31:70 pueden verse en el gráfico 3.6.
+
+```{r}
+
+```
+
+## 2.1.5 Distribución clases:
+
+Por último, en nuestro proceso de análisis exploratorio, se realizó un gráfico de distribución de variables para comprobar si estamos ante un problema de clases balanceadas o en su defecto no balanceadas. El resultado puede verse en el gráfico 3.7, donde queda constatado que estamos ante un problema donde la clase 0 y la 1 están en clara desventaja por lo que habrá que usar técnicas de oversampling o undersampling
+
+```{r}
 library(ggplot2)
-aggr(train,numbers=T,sortVar=T)
+ggplot(final, aes(C)) + geom_bar()
 ```
 
+## 2.2 Preprocesado
 
 
-# Tatamiento de los missign Values
+### 2.2.1 Imputación de valores perdidos
 
-```{r}
-library(missMDA)
-nb <- estim_ncpPCA(train,method.cv = "Kfold", verbose = FALSE) # estimate the number of components from incomplete data
-#(available methods include GCV to approximate CV)
-nb$ncp #2
-plot(0:5, nb$criterion, xlab = "nb dim", ylab = "MSEP")
-res.comp <- imputePCA(train, ncp = nb$ncp) # iterativePCA algorithm
-res.comp$completeObs[1:3,] # the imputed data set
+Uno de los primeros problemas a los que nos hemos enfrentado para comenzar el preprocesamiento de los datos ha sido la existencia de valores perdidos (NAs) en el dataset.
 
-imp <- cbind.data.frame(res.comp$completeObs,train[,C])
-res.pca <- PCA(imp, quanti.sup = 1, quali.sup = 12, ncp = nb$ncp, graph=FALSE)
-plot(res.pca, hab=12, lab="quali");
-```
-```{r}
-ntrees=100
-iris.imp = missForest(train, variablewise=TRUE,
-ntree=ntrees)
-iris.imp$OOB
-```
+Mice & KNN
+
+El paquete puede usarse para imputar valores perdidos sobre variables categóricas y continuas, usando un algoritmo específico de imputación conocido con el mismo nombre (MICE).
 
 ```{r}
-imp.mice <- mice(train, m = 100, defaultMethod = "norm.boot") # the variability of the parameters is obtained 
-res.MIPCA <- MIPCA(don, ncp = 2, nboot = 100) 
-res.MIPCA
-```
-
-
-```{r}
-## If a variable has less than 50% missing values, imputation or prediction might be a viable option.
-train.imputed <- subset(train, select = -c(X9))
-```
-
-If a variable has less than 50% missing values, imputation or prediction might be a viable option.
-
-Imputation with mean / median / mode
-
-```{r}
-library(Hmisc)
-train.imputed.mean <- train
-train.imputed.mode <- train
-train.imputed.median <- train
-for (i in length() -1 ) {
-  train.imputed.mean[,i] <- impute(train.imputed.mean[,i], mean)
-  train.imputed.mode[,i] <- impute(train.imputed.mode[,i], mode)
-  train.imputed.median[,i] <- impute(train.imputed.median[,i], median) 
-}
-```
-
-Prediction
-
-
-```{r}
-imputed_Data <- mice(subset(train, select = -c(C)), m=5, maxit = 50, method = 'pmm', seed = 500)
-summary(imputed_Data)
-```
-```{r}
-completeData <- complete(imputed_Data,5)
-colSums(is.na(completeData))
-```
-
-
-kNN Imputation
-
-```{r}
-library(DMwR)
-require(robCompositions)
-train.imputed.knn <- train.imputed
-train.imputed.knn[, !names(train.imputed.knn) %in% "C"] <- knnImputation(train.imputed.knn[, !names(train.imputed.knn) %in% "C"])  # perform knn imputation.
-```
-
-Random Forest
-
-```{r}
+# Este paquete puede usarse para imputar valores perdidos en
+# variables de todo tipo
 library(mice)
-train.imputed.rf <- train.imputed
-miceMod <- mice(train.imputed.rf[, !names(train.imputed.rf) %in% "C"], method="rf")  # perform mice imputation, based on random forests.
-train.imputed.rf[, !names(train.imputed.rf) %in% "C"] <- complete(miceMod)  # generate the completed data.
+library(lattice)
+require(robCompositions)
+require(mice)
+
+data.imputed <- list()
+datos <- train
+
+# se determina el numero de instancias sin datos perdidos y con datos
+# perdidos. A observar la comodidad de uso de las funciones ncc e nic
+completos <- mice::ncc(datos)
+incompletos <- mice::nic(datos)
+cat("Datos completos: ",completos, " e incompletos: ",incompletos,"\n")
+# se realiza la imputacion
+m <- 5 #Impute by Average
+imputados.pmm <- mice::mice(datos, m=m, meth="pmm")
+data.imputed[["pmm"]] <- mice::complete(imputados.pmm)
+writeData(data.imputed[["pmm"]], path = "datosFiltrados/", "imputedPmm")
+
+imputados.rf <- mice::mice(datos, m=m, meth="rf", ntree = 3)
+data.imputed[["rf"]] <- mice::complete(imputados.rf)
+writeData(data.imputed[["rf"]], path = "datosFiltrados/", "imputedRf")
+
+data.imputed[["knnCustom"]] <- imputacionKnnTotal(datos)
+writeData(data.imputed[["rf"]], path = "datosFiltrados/", "imputedKnnCustom")
+
+imputados.mean <- mice::mice(datos, m=m, meth="mean") #Impute by Average
+data.imputed[["mean"]] <- mice::complete(imputados.mean)
+writeData(data.imputed[["mean"]], path = "datosFiltrados/", "imputedMean")
+
+
+data.imputed[["knn"]] <- robCompositions::impKNNa(datos, primitive=TRUE) #Impute by Predictive Model
+writeData(data.imputed[["knn"]], path = "datosFiltrados/", "imputedKnn")
 ```
 
-
-# Entrenando nuestro modelo
-
-##Creamos los distintos árboles
 ```{r}
-set.seed(81)
-trees <- crear_arbol(train.imputed.rf, "C", withPartitions = FALSE)
+library(Amelia)
+data.imputed[["amelia"]] <- Amelia::amelia(datos,m=1, parallel="multicore",noms="C")
+writeData(data.imputed[["amelia"]]$imputations$imp1, path = "datosFiltrados/", "imputedAmelia")
 ```
 
 
-## Podamos el árbol
+### 2.2.3 Outliers
 
 ```{r}
-print_diagnostic(trees)
-```
-
-```{r}
-plot(trees[[const$treeBagging]][[const$model]])
-```
-```{r}
-trees[[const$treeBagging]][[const$pre]]
+data.outlier[["ipf"]] <- ipfFilter(train)
+writeData(data.outlier[["ipf"]], path = "datosFiltrados/", "noiseIpf")
 ```
 
 
-********************
+### 2.2.3 Selección de características
 
+Este apartado va a tratar sobre los procesos y técnicas que hemos seguido para realizar selección de características. La selección de características o atributos consiste en seleccionar un subconjunto relevante de características para poder construir un modelo
 
-
-
-
-
-
-# Selección de variables, reducción de dimensionalidad
-
-# TDetección outliers
-
-
-########################
-##    TRANSFORMACIÓN  ##
-########################
-
-# Normalización ?
-# si aplicamos K-means como métodos de discretización, es necesario normalizar y escalar los datos
-
-#Se aplica el centrado y escalado sobre el conjunto de datos, una vez eliminados los valores perdidos
-valoresPreprocesados <- caret::preProcess(dataset$test[, -c(dim(train)[2] - 1)],method=c("center","scale"))
-train[, -c(dim(train)[2] - 1)] <- predict(valoresPreprocesados,train[, -c(dim(train)[2] - 1)])
-
-  
-#####################
-## DISCRETIZACIÓN  ##
-##################### 
-  
-#Discretizamos las variables continuas con modelos no supervisados
-#train[,1] <- myDiscretization(train, method = 2)
-
-#####################
-##     MODELO     ##
-##################### 
 ```{r}
 
+############
+# 4. SMOTE #
+############
+
+trainSMOTE <- train
+
+library(unbalanced)
+# Aplico SMOTE sobre la clase 0 respecto al resto
+instanciasSmote <- unbalanced::ubSMOTE(trainSMOTE[,-75], factor(as.integer(I(train[,75]==0))), perc.over = 200)
+# Se unen todas las variables con la clase
+instanciasSmote <-cbind(instanciasSmote[[1]], instanciasSmote[[2]])
+# Me quedo con las instancias sintéticas para la clase minoritaria 0 que está marcadas como 1
+instanciasSmote <- instanciasSmote[which(instanciasSmote[,75]==1),]
+# Las convierto a 0
+instanciasSmote[,75] <- 0
+# Cambio el nombre de la clase a y
+names(instanciasSmote)[75] <- "y"
+# Añado los SMOTE a train
+trainSMOTE <- rbind(trainSMOTE, instanciasSmote)
+
+crossvalidation5(trainSMOTE[,-var[1:25]]) # 0.6523741
+prediccionTest(trainSMOTE[,-var[1:25]], test)
+
+##################
+# 5. IPF + SMOTE #
+##################
+
+trainIPF_SMOTE <- train
+
+# Factorizo la clase para aplicarle IPF
+trainIPF_SMOTE[,75] <- factor(trainIPF_SMOTE[,75])
+# Le quito las instancias con ruido
+# indico que pare a la segunda que no encuentre y que lo haga mediante consenso
+trainIPF_SMOTE <- IPF(y ~., trainIPF_SMOTE, consensus = TRUE, s=2)
+# Me quedo unicamente con el data.frame limpio
+trainIPF_SMOTE <- trainIPF_SMOTE$cleanData
+
+# Aplico SMOTE sobre la clase 0 respecto al resto
+instanciasSmote <- unbalanced::ubSMOTE(trainIPF_SMOTE[,-75], factor(as.integer(I(trainIPF_SMOTE[,75]==0))), perc.over = 200)
+# Se unen todas las variables con la clase
+instanciasSmote <-cbind(instanciasSmote[[1]], instanciasSmote[[2]])
+# Me quedo con las instancias sintéticas para la clase minoritaria 0 que está marcadas como 1
+instanciasSmote <- instanciasSmote[which(instanciasSmote[,75]==1),]
+# Las convierto a 0
+instanciasSmote[,75] <- 0
+# Cambio el nombre de la clase a y
+names(instanciasSmote)[75] <- "y"
+# Añado los SMOTE a train
+trainIPF_SMOTE <- rbind(trainIPF_SMOTE, instanciasSmote)
+
+crossvalidation5(trainIPF_SMOTE[,-var[1:25]]) # 0.7006897
+prediccionTest(trainIPF_SMOTE[,-var[1:25]], test)
+
+##################
+# 6. SMOTE + IPF #
+##################
+
+trainSMOTE_IPF <- train
+
+# Aplico SMOTE sobre la clase 0 respecto al resto
+instanciasSmote <- unbalanced::ubSMOTE(trainSMOTE_IPF[,-75], factor(as.integer(I(trainSMOTE_IPF[,75]==0))), perc.over = 200)
+# Se unen todas las variables con la clase
+instanciasSmote <-cbind(instanciasSmote[[1]], instanciasSmote[[2]])
+# Me quedo con las instancias sintéticas para la clase minoritaria 0 que está marcadas como 1
+instanciasSmote <- instanciasSmote[which(instanciasSmote[,75]==1),]
+# Las convierto a 0
+instanciasSmote[,75] <- 0
+# Cambio el nombre de la clase a y
+names(instanciasSmote)[75] <- "y"
+# Añado los SMOTE a train
+trainSMOTE_IPF <- rbind(trainSMOTE_IPF, instanciasSmote)
+
+# Factorizo la clase para aplicarle IPF
+trainSMOTE_IPF[,75] <- factor(trainSMOTE_IPF[,75])
+# Le quito las instancias con ruido
+# indico que pare a la segunda que no encuentre y que lo haga mediante consenso
+trainSMOTE_IPF <- IPF(y ~., trainSMOTE_IPF, consensus = TRUE, s=2)
+# Me quedo unicamente con el data.frame limpio
+trainSMOTE_IPF <- trainSMOTE_IPF$cleanData
+
+crossvalidation5(trainSMOTE_IPF[,-var[1:25]]) # 0.6690093
+prediccionTest(trainSMOTE_IPF[,-var[1:25]], test)
+
+##################
+# 7. Tomek Links #
+##################
+
+trainTL <- train
+
+# Busco las instancias Tomek Links
+instanciasTL<- unbalanced::ubTomek(trainTL[,-75], (trainTL[,75]==0))
+# Elimino esas instancias de train
+trainTL <- trainTL[-instanciasTL$id.rm,]
+
+crossvalidation5(trainTL[,-var[1:25]]) # 0.64294
+prediccionTest(trainTL[,-var[1:25]], test)
+
+##########################
+# 8. Tomek Links + SMOTE #
+##########################
+
+trainTL_SMOTE <- train
+
+# Busco las instancias Tomek Links
+instanciasTL<- unbalanced::ubTomek(trainTL_SMOTE[,-75], (trainTL_SMOTE[,75]==0))
+# Elimino esas instancias de train
+trainTL_SMOTE <- trainTL_SMOTE[-instanciasTL$id.rm,]
+
+# Aplico SMOTE sobre la clase 0 respecto al resto
+instanciasSmote <- unbalanced::ubSMOTE(trainTL_SMOTE[,-75], factor(as.integer(I(trainTL_SMOTE[,75]==0))), perc.over = 200)
+# Se unen todas las variables con la clase
+instanciasSmote <-cbind(instanciasSmote[[1]], instanciasSmote[[2]])
+# Me quedo con las instancias sintéticas para la clase minoritaria 0 que está marcadas como 1
+instanciasSmote <- instanciasSmote[which(instanciasSmote[,75]==1),]
+# Las convierto a 0
+instanciasSmote[,75] <- 0
+# Cambio el nombre de la clase a y
+names(instanciasSmote)[75] <- "y"
+# Añado los SMOTE a train
+trainTL_SMOTE <- rbind(trainTL_SMOTE, instanciasSmote)
+
+crossvalidation5(trainTL_SMOTE[,-var[1:25]]) # 0.6566631
+prediccionTest(trainTL_SMOTE[,-var[1:25]], test)
+
+##########################
+# 9. SMOTE + Tomek Links #
+##########################
+
+trainSMOTE_TL <- train
+
+# Aplico SMOTE sobre la clase 0 respecto al resto
+instanciasSmote <- unbalanced::ubSMOTE(trainSMOTE_TL[,-75], factor(as.integer(I(trainSMOTE_TL[,75]==0))), perc.over = 200)
+# Se unen todas las variables con la clase
+instanciasSmote <-cbind(instanciasSmote[[1]], instanciasSmote[[2]])
+# Me quedo con las instancias sintéticas para la clase minoritaria 0 que está marcadas como 1
+instanciasSmote <- instanciasSmote[which(instanciasSmote[,75]==1),]
+# Las convierto a 0
+instanciasSmote[,75] <- 0
+# Cambio el nombre de la clase a y
+names(instanciasSmote)[75] <- "y"
+# Añado los SMOTE a train
+trainSMOTE_TL <- rbind(trainSMOTE_TL, instanciasSmote)
+
+# Busco las instancias Tomek Links
+instanciasTL<- unbalanced::ubTomek(trainSMOTE_TL[,-75], (trainSMOTE_TL[,75]==0))
+# Elimino esas instancias de train
+trainSMOTE_TL <- trainSMOTE_TL[-instanciasTL$id.rm,]
+
+crossvalidation5(trainSMOTE_TL[,-var[1:25]]) # 0.6534006
+prediccionTest(trainSMOTE_TL[,-var[1:25]], test)
+
+###########
+# 10. ROS #
+###########
+
+trainROS <- train
+
+library(ROSE)
+# Factorizo la clase
+trainROS[,75] <- factor(trainROS[,75])
+# Modifico los levels de la clase para aplicar ROS
+levels(trainROS[,75]) <- c(0,1,1,1)
+instanciasROS <- ROSE::ovun.sample(y ~., trainROS, method = "over")
+# Añado a train las instancias ROS de la clase 0
+trainROS <- rbind(train, instanciasROS$data[which(instanciasROS$data[,75]==0),])
+
+crossvalidation5(trainROS[,-var[1:25]]) # 0.7229307
+prediccionTest(trainROS[,-var[1:25]], test)
+
+
+#################
+# 11. ROS + IPF #
+#################
+
+trainROS_IPF <- train
+
+# Factorizo la clase
+trainROS_IPF[,75] <- factor(trainROS_IPF[,75])
+# Modifico los levels de la clase para aplicar ROS
+levels(trainROS_IPF[,75]) <- c(0,1,1,1)
+instanciasROS <- ROSE::ovun.sample(y ~., trainROS_IPF, method = "over")
+# Añado a train las instancias ROS de la clase 0
+trainROS_IPF <- rbind(train, instanciasROS$data[which(instanciasROS$data[,75]==0),])
+
+# Factorizo la clase para aplicarle IPF
+trainROS_IPF[,75] <- factor(trainROS_IPF[,75])
+# Le quito las instancias con ruido
+# indico que pare a la segunda que no encuentre y que lo haga mediante consenso
+trainROS_IPF <- IPF(y ~., trainROS_IPF, consensus = TRUE, s=2)
+# Me quedo unicamente con el data.frame limpio
+trainROS_IPF <- trainROS_IPF$cleanData
+
+crossvalidation5(trainROS_IPF[,-var[1:25]]) # 0.7340467
+prediccionTest(trainROS_IPF[,-var[1:25]], test)
+
+#############
+# 12. ROS 2 #
+#############
+
+train_ROS2 <- train
+
+# Hago ROS de la clase 0 con cada una del resto de manera individual y prestando
+# más atención a la clase 1
+train_ROS2_1 <- train[which(train_ROS2[,75]==0|train_ROS2[,75]==1),]
+train_ROS2_1 <- ROSE::ovun.sample(y ~., train_ROS2_1, method = "over", p=0.5)
+train_ROS2_1 <- train_ROS2_1$data
+levels(train_ROS2_1) <- c(0,1)
+
+train_ROS2_2 <- train[which(train_ROS2[,75]==0|train_ROS2[,75]==2),]
+train_ROS2_2 <- ROSE::ovun.sample(y ~., train_ROS2_2, method = "over", p=0.3)
+train_ROS2_2 <- train_ROS2_2$data
+levels(train_ROS2_2) <- c(0,2)
+
+train_ROS2_3 <- train[which(train_ROS2[,75]==0|train_ROS2[,75]==1),]
+train_ROS2_3 <- ROSE::ovun.sample(y ~., train_ROS2_3, method = "over", p=0.3)
+train_ROS2_3 <- train_ROS2_3$data
+levels(train_ROS2_3) <- c(0,3)
+
+train_ROS2 <- rbind(train, train_ROS2_1, train_ROS2_2, train_ROS2_3)
+
+crossvalidation5(train_ROS2[,-var[1:25]]) # 0.6478257
+prediccionTest(train_ROS2[,-var[1:25]], test)
+
+###################
+# 13. ROS 2 + IPF #
+###################
+
+train_ROS2_IPF <- train
+
+# Hago ROS de la clase 0 con cada una del resto de manera individual y prestando
+# más atención a la clase 1
+train_ROS2_1 <- train[which(train_ROS2_IPF[,75]==0|train_ROS2_IPF[,75]==1),]
+train_ROS2_1 <- ROSE::ovun.sample(y ~., train_ROS2_1, method = "over", p=0.5)
+train_ROS2_1 <- train_ROS2_1$data
+levels(train_ROS2_1) <- c(0,1)
+
+train_ROS2_2 <- train[which(train_ROS2_IPF[,75]==0|train_ROS2_IPF[,75]==2),]
+train_ROS2_2 <- ROSE::ovun.sample(y ~., train_ROS2_2, method = "over", p=0.3)
+train_ROS2_2 <- train_ROS2_2$data
+levels(train_ROS2_2) <- c(0,2)
+
+train_ROS2_3 <- train[which(train_ROS2_IPF[,75]==0|train_ROS2_IPF[,75]==1),]
+train_ROS2_3 <- ROSE::ovun.sample(y ~., train_ROS2_3, method = "over", p=0.3)
+train_ROS2_3 <- train_ROS2_3$data
+levels(train_ROS2_3) <- c(0,3)
+
+train_ROS2_IPF <- rbind(train, train_ROS2_1, train_ROS2_2, train_ROS2_3)
+
+# Factorizo la clase para aplicarle IPF
+train_ROS2_IPF[,75] <- factor(train_ROS2_IPF[,75])
+# Le quito las instancias con ruido
+# indico que pare a la segunda que no encuentre y que lo haga mediante consenso
+train_ROS2_IPF <- IPF(y ~., train_ROS2_IPF, consensus = TRUE, s=2)
+# Me quedo unicamente con el data.frame limpio
+train_ROS2_IPF <- train_ROS2_IPF$cleanData
+
+crossvalidation5(train_ROS2_IPF[,-var[1:25]]) # 0.6639876
+prediccionTest(train_ROS2_IPF[,-var[1:25]], test)
+
+###########
+# 14. ENN #
+###########
+
+trainENN <- train
+
+instanciasENN <- unbalanced::ubENN(trainENN[,-75], (trainENN[,75]==0))
+trainENN <- trainENN[-instanciasENN$id.rm,]
+
+crossvalidation5(trainENN[,-var[1:25]]) # 0.7550752
+prediccionTest(trainENN[,-var[1:25]], test)
+
+##################
+# 15. Duplicar 0 #
+##################
+
+trainROS_Propio <- train
+
+trainROS_Propio <- rbind(trainROS_Propio, train[which(trainROS_Propio[,75]==0),])
+
+crossvalidation5(trainROS_Propio[,-var[1:25]]) # 0.643618
+prediccionTest(trainROS_Propio[,-var[1:25]], test)
+
+#############################
+# 16. Duplicar 0 + Random 1 #
+#############################
+
+trainROS_Propio <- train
+
+trainROS_Propio <- rbind(trainROS_Propio, train[which(trainROS_Propio[,75]==0),])
+trainROS_Propio <- rbind(trainROS_Propio, train[sample(which(trainROS_Propio[,75]==1), length(which(trainROS_Propio[,75]==1))/2.5),]) 
+
+crossvalidation5(trainROS_Propio[,-var[1:25]]) # 0.6458915
+prediccionTest(trainROS_Propio[,-var[1:25]], test)
+
+# Gráfico para ver el acierto sobre train (Mejora el acierto de la clase 0 pero se reducen en la dos)
+prediccionesFinal <- prediccionTest(trainROS_Propio[,-var[1:25]], train)
+
+ggplot2::ggplot()+
+  geom_col(aes(x=0:3, y=as.data.frame(table(train[,75]))[,2], fill="Original"), alpha=.8) + 
+  geom_col(aes(x=0:3, y=as.data.frame(diag(table(train[,75], prediccionesFinal)))[,1], fill="Predicciones"), alpha=.8) +
+  scale_fill_discrete("Datos") +
+  labs(x = "Clase", y = "Valores")
+
 ```
+
+## Modelos 
+
+Using k-fold cross-validation to train and test the model
+
+```{r}
+library(plyr)
+library(rpart)
+set.seed(123)
+form <- "C ~ ."
+datos <- train
+folds <- split(datos, cut(sample(1:nrow(datos)),10))
+errs <- rep(NA, length(folds))
+
+for (i in 1:length(folds)) {
+ test <- ldply(folds[i], data.frame)
+ train <- ldply(folds[-i], data.frame)
+ tmp.model <- rpart(form , train, method = "class")
+ tmp.predict <- predict(tmp.model, newdata = test, type = "class")
+ conf.mat <- table(test$Species, tmp.predict)
+ errs[i] <- 1-sum(diag(conf.mat))/sum(conf.mat)
+}
+print(sprintf("average error using k-fold cross-validation: %.3f percent", 100*mean(errs)))
+```
+
+k-fold cross-validation with C5.0
+
+```{r}
+library(C50)
+library(plyr)
+errs.c50 <- rep(NA, length(folds))
+form <- "C ~ ."
+folds <- split(datos, cut(sample(1:nrow(datos)),10))
+for (i in 1:length(folds)) {
+ test <- ldply(folds[i], data.frame)
+ train <- ldply(folds[-i], data.frame)
+ tmp.model <- C5.0(as.formula(form), train)
+ tmp.predict <- predict(tmp.model, newdata=test)
+ conf.mat <- table(test$Species, tmp.predict)
+ errs.c50[i] <- 1 - sum(diag(conf.mat))/sum(conf.mat)
+}
+print(sprintf("average error using k-fold cross validation and C5.0 decision tree algorithm: %.3f percent", 100*mean(errs.c50)))
+```
+
+
 

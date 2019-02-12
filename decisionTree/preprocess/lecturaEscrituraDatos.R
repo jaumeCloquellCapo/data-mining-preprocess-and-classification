@@ -24,10 +24,13 @@ readData <- function(path = "../data/", files = c("train.csv", "test.csv"), file
   return(datasets)
 }
 
-#predictModel <- predict(model, newdata = test)
-#ids <- dataset$test$id
-witeData <- function (ids, predictModel, path = "") {
+KaggleWiteData <- function (ids, predictModel, path = "") {
   # create a dataframe with our results
   my_submission <- data.frame(Id = ids, Prediction = as.numeric(predictModel) - 1) 
   write.csv(my_submission, file = paste(path, format(Sys.time(), "%X %d-%m-%Y"), ".csv", sep = " "), sep = " ", row.names = FALSE, col.names=TRUE, quote = FALSE)
+}
+
+
+writeData <- function(dataset, file, path = ""){
+  write.csv(dataset, file = paste(path,file,".csv", sep=""), row.names = FALSE)
 }

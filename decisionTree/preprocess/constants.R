@@ -8,6 +8,7 @@ const <- list(
   "treeTree" = "treeTree",
   "treeC50" = "treeC50",
   "treeC45" = "treeC45",
+  "treePART" = "treePART",
   "treeGradienrtBoostedMachine" = "treeGradienrtBoostedMachine",
   "treeForest" = "treeForest",
   "treeBagging" = "treeBagging",
