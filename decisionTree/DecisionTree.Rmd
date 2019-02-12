@@ -134,6 +134,8 @@ ggcorr(train, method = c("pairwise.complete.obs", "pearson"))
 Dado el volumen del problema, se llevó a cabo un estudio de outliers univariate básico basado en distancia intercuartil (IQR). Para que este proceso obtenga buenos resultados, se escalaron las variables y se analizaron solo aquellas cuyo dominio es continuo. Los resultados para las variables 1:30 pueden verse en el gráfico 3.5 mientras que las variables 31:70 pueden verse en el gráfico 3.6.
 
 ```{r}
+# se aplica el centrado y escalado sobre el conjunto de datos, una vez eliminados los valores perdidos
+valoresPreprocesados <- caret::preProcess(train,method=c("center","scale"))
 
 ```
 
@@ -183,7 +185,7 @@ data.imputed[["rf"]] <- mice::complete(imputados.rf)
 writeData(data.imputed[["rf"]], path = "datosFiltrados/", "imputedRf")
 
 data.imputed[["knnCustom"]] <- imputacionKnnTotal(datos)
-writeData(data.imputed[["rf"]], path = "datosFiltrados/", "imputedKnnCustom")
+writeData(data.imputed[["knnCustom"]], path = "datosFiltrados/", "imputedKnnCustom")
 
 imputados.mean <- mice::mice(datos, m=m, meth="mean") #Impute by Average
 data.imputed[["mean"]] <- mice::complete(imputados.mean)
@@ -191,17 +193,19 @@ writeData(data.imputed[["mean"]], path = "datosFiltrados/", "imputedMean")
 
 
 data.imputed[["knn"]] <- robCompositions::impKNNa(datos, primitive=TRUE) #Impute by Predictive Model
-writeData(data.imputed[["knn"]], path = "datosFiltrados/", "imputedKnn")
+writeData(data.imputed[["knn"]]$xImp, path = "datosFiltrados/", "imputedKnn")
 
-data.imputed[["amelia"]] <- Amelia::amelia(datos,m=1, parallel="multicore",noms="C")
-writeData(data.imputed[["amelia"]]$imputations$imp1, path = "datosFiltrados/", "imputedAmelia")
+data.imputed[["amelia"]] <- Amelia::amelia(datos,m=5, parallel="multicore",noms="C")
+write.amelia(obj=data.imputed[["amelia"]], file.stem = "datosFiltrados/imputedAmelia")
 ```
-
 
 ### 2.2.3 Outliers
 
 ```{r}
-data.outlier[["ipf"]] <- ipfFilter(train)
+data.outlier <- list()
+datos <- train
+datos$C <- as.factor(datos$C)
+data.outlier[["ipf"]] <- ipfFilter(datos)
 writeData(data.outlier[["ipf"]], path = "datosFiltrados/", "noiseIpf")
 ```
 
@@ -209,322 +213,193 @@ writeData(data.outlier[["ipf"]], path = "datosFiltrados/", "noiseIpf")
 ### 2.2.3 Selección de características
 
 Este apartado va a tratar sobre los procesos y técnicas que hemos seguido para realizar selección de características. La selección de características o atributos consiste en seleccionar un subconjunto relevante de características para poder construir un modelo
+```{r}
+datos <- train
+selector.random.forest(datos)
+selector.chiSquare(datos)
+```
+
+### 2.2.3 Oversampliung undersampling
 
 ```{r}
-
-############
-# 4. SMOTE #
-############
-
-trainSMOTE <- train
-
+data.balanced <- list()
+#smote 
 library(unbalanced)
-# Aplico SMOTE sobre la clase 0 respecto al resto
-instanciasSmote <- unbalanced::ubSMOTE(trainSMOTE[,-75], factor(as.integer(I(train[,75]==0))), perc.over = 200)
-# Se unen todas las variables con la clase
-instanciasSmote <-cbind(instanciasSmote[[1]], instanciasSmote[[2]])
-# Me quedo con las instancias sintéticas para la clase minoritaria 0 que está marcadas como 1
-instanciasSmote <- instanciasSmote[which(instanciasSmote[,75]==1),]
-# Las convierto a 0
-instanciasSmote[,75] <- 0
-# Cambio el nombre de la clase a y
-names(instanciasSmote)[75] <- "y"
-# Añado los SMOTE a train
-trainSMOTE <- rbind(trainSMOTE, instanciasSmote)
+datos <- train
+datos$C <- as.factor(datos$C)
+n<-ncol(datos)
+output<-datos$C
+input<-datos[ ,-n]
+#balance the dataset
+data<-ubBalance(X= input, Y=output, type="ubSMOTE", percOver=300, percUnder=150, verbose=TRUE)
+data.balanced[["smote"]]<-cbind(data$X,"C" = data$Y)
+writeData(data.balanced[["smote"]], path = "datosFiltrados/", "smote")
 
-crossvalidation5(trainSMOTE[,-var[1:25]]) # 0.6523741
-prediccionTest(trainSMOTE[,-var[1:25]], test)
+## Tomek Links
+#data<-ubTomek(X=input, Y= output)
+#data.balanced[["tomekLink"]]<-cbind(data$X, data$Y)
+#writeData(data.balanced[["tomekLink"]], path = "datosFiltrados/", "tomekLink")
+```
 
-##################
-# 5. IPF + SMOTE #
-##################
 
-trainIPF_SMOTE <- train
+### 2.3 Combinación
 
-# Factorizo la clase para aplicarle IPF
-trainIPF_SMOTE[,75] <- factor(trainIPF_SMOTE[,75])
-# Le quito las instancias con ruido
-# indico que pare a la segunda que no encuentre y que lo haga mediante consenso
-trainIPF_SMOTE <- IPF(y ~., trainIPF_SMOTE, consensus = TRUE, s=2)
-# Me quedo unicamente con el data.frame limpio
-trainIPF_SMOTE <- trainIPF_SMOTE$cleanData
+```{r}
+combinations <- list()
+############ Imputaciones
+print("*********************** RF")
+data <- data.imputed[["rf"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
 
-# Aplico SMOTE sobre la clase 0 respecto al resto
-instanciasSmote <- unbalanced::ubSMOTE(trainIPF_SMOTE[,-75], factor(as.integer(I(trainIPF_SMOTE[,75]==0))), perc.over = 200)
-# Se unen todas las variables con la clase
-instanciasSmote <-cbind(instanciasSmote[[1]], instanciasSmote[[2]])
-# Me quedo con las instancias sintéticas para la clase minoritaria 0 que está marcadas como 1
-instanciasSmote <- instanciasSmote[which(instanciasSmote[,75]==1),]
-# Las convierto a 0
-instanciasSmote[,75] <- 0
-# Cambio el nombre de la clase a y
-names(instanciasSmote)[75] <- "y"
-# Añado los SMOTE a train
-trainIPF_SMOTE <- rbind(trainIPF_SMOTE, instanciasSmote)
+print("*********************** KNN CUSTON")
+data <- data.imputed[["knnCustom"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
 
-crossvalidation5(trainIPF_SMOTE[,-var[1:25]]) # 0.7006897
-prediccionTest(trainIPF_SMOTE[,-var[1:25]], test)
+############ Amelia
+print("*********************** Amelia 1")
+data <- data.imputed[["amelia"]]$imputations$imp1
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
 
-##################
-# 6. SMOTE + IPF #
-##################
+print("*********************** Amelia 3")
+data <- data.imputed[["amelia"]]$imputations$imp3
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
 
-trainSMOTE_IPF <- train
+print("*********************** Amelia 5")
+data <- data.imputed[["amelia"]]$imputations$imp5
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
 
-# Aplico SMOTE sobre la clase 0 respecto al resto
-instanciasSmote <- unbalanced::ubSMOTE(trainSMOTE_IPF[,-75], factor(as.integer(I(trainSMOTE_IPF[,75]==0))), perc.over = 200)
-# Se unen todas las variables con la clase
-instanciasSmote <-cbind(instanciasSmote[[1]], instanciasSmote[[2]])
-# Me quedo con las instancias sintéticas para la clase minoritaria 0 que está marcadas como 1
-instanciasSmote <- instanciasSmote[which(instanciasSmote[,75]==1),]
-# Las convierto a 0
-instanciasSmote[,75] <- 0
-# Cambio el nombre de la clase a y
-names(instanciasSmote)[75] <- "y"
-# Añado los SMOTE a train
-trainSMOTE_IPF <- rbind(trainSMOTE_IPF, instanciasSmote)
 
-# Factorizo la clase para aplicarle IPF
-trainSMOTE_IPF[,75] <- factor(trainSMOTE_IPF[,75])
-# Le quito las instancias con ruido
-# indico que pare a la segunda que no encuentre y que lo haga mediante consenso
-trainSMOTE_IPF <- IPF(y ~., trainSMOTE_IPF, consensus = TRUE, s=2)
-# Me quedo unicamente con el data.frame limpio
-trainSMOTE_IPF <- trainSMOTE_IPF$cleanData
 
-crossvalidation5(trainSMOTE_IPF[,-var[1:25]]) # 0.6690093
-prediccionTest(trainSMOTE_IPF[,-var[1:25]], test)
 
-##################
-# 7. Tomek Links #
-##################
+############ SELECCIÓN DE VARIABLES
 
-trainTL <- train
 
-# Busco las instancias Tomek Links
-instanciasTL<- unbalanced::ubTomek(trainTL[,-75], (trainTL[,75]==0))
-# Elimino esas instancias de train
-trainTL <- trainTL[-instanciasTL$id.rm,]
+############ IPF
 
-crossvalidation5(trainTL[,-var[1:25]]) # 0.64294
-prediccionTest(trainTL[,-var[1:25]], test)
+print("*********************** IPF")
+data <- data.outlier[["ipf"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
 
-##########################
-# 8. Tomek Links + SMOTE #
-##########################
+############ SMOTE
 
-trainTL_SMOTE <- train
+print("*********************** Smote")
+data <- data.balanced[["smote"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
 
-# Busco las instancias Tomek Links
-instanciasTL<- unbalanced::ubTomek(trainTL_SMOTE[,-75], (trainTL_SMOTE[,75]==0))
-# Elimino esas instancias de train
-trainTL_SMOTE <- trainTL_SMOTE[-instanciasTL$id.rm,]
 
-# Aplico SMOTE sobre la clase 0 respecto al resto
-instanciasSmote <- unbalanced::ubSMOTE(trainTL_SMOTE[,-75], factor(as.integer(I(trainTL_SMOTE[,75]==0))), perc.over = 200)
-# Se unen todas las variables con la clase
-instanciasSmote <-cbind(instanciasSmote[[1]], instanciasSmote[[2]])
-# Me quedo con las instancias sintéticas para la clase minoritaria 0 que está marcadas como 1
-instanciasSmote <- instanciasSmote[which(instanciasSmote[,75]==1),]
-# Las convierto a 0
-instanciasSmote[,75] <- 0
-# Cambio el nombre de la clase a y
-names(instanciasSmote)[75] <- "y"
-# Añado los SMOTE a train
-trainTL_SMOTE <- rbind(trainTL_SMOTE, instanciasSmote)
+############# IPF + SMOTE
+print("*********************** IPF + Smote")
 
-crossvalidation5(trainTL_SMOTE[,-var[1:25]]) # 0.6566631
-prediccionTest(trainTL_SMOTE[,-var[1:25]], test)
+datos <- data.outlier[["ipf"]]
+datos$C <- as.factor(datos$C)
+n<-ncol(datos)
+output<-datos$C
+input<-datos[ ,-n]
+#balance the dataset
+data<-ubBalance(X= input, Y=output, type="ubSMOTE", percOver=300, percUnder=150, verbose=TRUE)
+combinations[["ipfSmote"]]<-cbind(data$X,"C" = data$Y)
+writeData(combinations[["ipfSmote"]], path = "datosFiltrados/", "ipfSmote")
 
-##########################
-# 9. SMOTE + Tomek Links #
-##########################
+data <- combinations[["ipfSmote"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
 
-trainSMOTE_TL <- train
+############# SMOTE + IPF
 
-# Aplico SMOTE sobre la clase 0 respecto al resto
-instanciasSmote <- unbalanced::ubSMOTE(trainSMOTE_TL[,-75], factor(as.integer(I(trainSMOTE_TL[,75]==0))), perc.over = 200)
-# Se unen todas las variables con la clase
-instanciasSmote <-cbind(instanciasSmote[[1]], instanciasSmote[[2]])
-# Me quedo con las instancias sintéticas para la clase minoritaria 0 que está marcadas como 1
-instanciasSmote <- instanciasSmote[which(instanciasSmote[,75]==1),]
-# Las convierto a 0
-instanciasSmote[,75] <- 0
-# Cambio el nombre de la clase a y
-names(instanciasSmote)[75] <- "y"
-# Añado los SMOTE a train
-trainSMOTE_TL <- rbind(trainSMOTE_TL, instanciasSmote)
+print("*********************** SMOTE + IPF")
 
-# Busco las instancias Tomek Links
-instanciasTL<- unbalanced::ubTomek(trainSMOTE_TL[,-75], (trainSMOTE_TL[,75]==0))
-# Elimino esas instancias de train
-trainSMOTE_TL <- trainSMOTE_TL[-instanciasTL$id.rm,]
+datos <- data.balanced[["smote"]]
+datos$C <- as.factor(datos$C)
+combinations[["smoteIpf"]] <- ipfFilter(datos)
+writeData(combinations[["smoteIpf"]], path = "datosFiltrados/", "smoteIpf")
 
-crossvalidation5(trainSMOTE_TL[,-var[1:25]]) # 0.6534006
-prediccionTest(trainSMOTE_TL[,-var[1:25]], test)
+data <- combinations[["ipfSmote"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+
+############ Tomek Links
+
+
+
+############ Tomek Links + SMOTE
+
+
+############ SMOTE + Tomek Links
+
 
 ###########
 # 10. ROS #
 ###########
-
-trainROS <- train
-
-library(ROSE)
-# Factorizo la clase
-trainROS[,75] <- factor(trainROS[,75])
-# Modifico los levels de la clase para aplicar ROS
-levels(trainROS[,75]) <- c(0,1,1,1)
-instanciasROS <- ROSE::ovun.sample(y ~., trainROS, method = "over")
-# Añado a train las instancias ROS de la clase 0
-trainROS <- rbind(train, instanciasROS$data[which(instanciasROS$data[,75]==0),])
-
-crossvalidation5(trainROS[,-var[1:25]]) # 0.7229307
-prediccionTest(trainROS[,-var[1:25]], test)
 
 
 #################
 # 11. ROS + IPF #
 #################
 
-trainROS_IPF <- train
-
-# Factorizo la clase
-trainROS_IPF[,75] <- factor(trainROS_IPF[,75])
-# Modifico los levels de la clase para aplicar ROS
-levels(trainROS_IPF[,75]) <- c(0,1,1,1)
-instanciasROS <- ROSE::ovun.sample(y ~., trainROS_IPF, method = "over")
-# Añado a train las instancias ROS de la clase 0
-trainROS_IPF <- rbind(train, instanciasROS$data[which(instanciasROS$data[,75]==0),])
-
-# Factorizo la clase para aplicarle IPF
-trainROS_IPF[,75] <- factor(trainROS_IPF[,75])
-# Le quito las instancias con ruido
-# indico que pare a la segunda que no encuentre y que lo haga mediante consenso
-trainROS_IPF <- IPF(y ~., trainROS_IPF, consensus = TRUE, s=2)
-# Me quedo unicamente con el data.frame limpio
-trainROS_IPF <- trainROS_IPF$cleanData
-
-crossvalidation5(trainROS_IPF[,-var[1:25]]) # 0.7340467
-prediccionTest(trainROS_IPF[,-var[1:25]], test)
-
-#############
-# 12. ROS 2 #
-#############
-
-train_ROS2 <- train
-
-# Hago ROS de la clase 0 con cada una del resto de manera individual y prestando
-# más atención a la clase 1
-train_ROS2_1 <- train[which(train_ROS2[,75]==0|train_ROS2[,75]==1),]
-train_ROS2_1 <- ROSE::ovun.sample(y ~., train_ROS2_1, method = "over", p=0.5)
-train_ROS2_1 <- train_ROS2_1$data
-levels(train_ROS2_1) <- c(0,1)
-
-train_ROS2_2 <- train[which(train_ROS2[,75]==0|train_ROS2[,75]==2),]
-train_ROS2_2 <- ROSE::ovun.sample(y ~., train_ROS2_2, method = "over", p=0.3)
-train_ROS2_2 <- train_ROS2_2$data
-levels(train_ROS2_2) <- c(0,2)
-
-train_ROS2_3 <- train[which(train_ROS2[,75]==0|train_ROS2[,75]==1),]
-train_ROS2_3 <- ROSE::ovun.sample(y ~., train_ROS2_3, method = "over", p=0.3)
-train_ROS2_3 <- train_ROS2_3$data
-levels(train_ROS2_3) <- c(0,3)
-
-train_ROS2 <- rbind(train, train_ROS2_1, train_ROS2_2, train_ROS2_3)
-
-crossvalidation5(train_ROS2[,-var[1:25]]) # 0.6478257
-prediccionTest(train_ROS2[,-var[1:25]], test)
-
-###################
-# 13. ROS 2 + IPF #
-###################
-
-train_ROS2_IPF <- train
-
-# Hago ROS de la clase 0 con cada una del resto de manera individual y prestando
-# más atención a la clase 1
-train_ROS2_1 <- train[which(train_ROS2_IPF[,75]==0|train_ROS2_IPF[,75]==1),]
-train_ROS2_1 <- ROSE::ovun.sample(y ~., train_ROS2_1, method = "over", p=0.5)
-train_ROS2_1 <- train_ROS2_1$data
-levels(train_ROS2_1) <- c(0,1)
-
-train_ROS2_2 <- train[which(train_ROS2_IPF[,75]==0|train_ROS2_IPF[,75]==2),]
-train_ROS2_2 <- ROSE::ovun.sample(y ~., train_ROS2_2, method = "over", p=0.3)
-train_ROS2_2 <- train_ROS2_2$data
-levels(train_ROS2_2) <- c(0,2)
-
-train_ROS2_3 <- train[which(train_ROS2_IPF[,75]==0|train_ROS2_IPF[,75]==1),]
-train_ROS2_3 <- ROSE::ovun.sample(y ~., train_ROS2_3, method = "over", p=0.3)
-train_ROS2_3 <- train_ROS2_3$data
-levels(train_ROS2_3) <- c(0,3)
-
-train_ROS2_IPF <- rbind(train, train_ROS2_1, train_ROS2_2, train_ROS2_3)
-
-# Factorizo la clase para aplicarle IPF
-train_ROS2_IPF[,75] <- factor(train_ROS2_IPF[,75])
-# Le quito las instancias con ruido
-# indico que pare a la segunda que no encuentre y que lo haga mediante consenso
-train_ROS2_IPF <- IPF(y ~., train_ROS2_IPF, consensus = TRUE, s=2)
-# Me quedo unicamente con el data.frame limpio
-train_ROS2_IPF <- train_ROS2_IPF$cleanData
-
-crossvalidation5(train_ROS2_IPF[,-var[1:25]]) # 0.6639876
-prediccionTest(train_ROS2_IPF[,-var[1:25]], test)
 
 ###########
 # 14. ENN #
 ###########
 
-trainENN <- train
-
-instanciasENN <- unbalanced::ubENN(trainENN[,-75], (trainENN[,75]==0))
-trainENN <- trainENN[-instanciasENN$id.rm,]
-
-crossvalidation5(trainENN[,-var[1:25]]) # 0.7550752
-prediccionTest(trainENN[,-var[1:25]], test)
-
-##################
-# 15. Duplicar 0 #
-##################
-
-trainROS_Propio <- train
-
-trainROS_Propio <- rbind(trainROS_Propio, train[which(trainROS_Propio[,75]==0),])
-
-crossvalidation5(trainROS_Propio[,-var[1:25]]) # 0.643618
-prediccionTest(trainROS_Propio[,-var[1:25]], test)
-
-#############################
-# 16. Duplicar 0 + Random 1 #
-#############################
-
-trainROS_Propio <- train
-
-trainROS_Propio <- rbind(trainROS_Propio, train[which(trainROS_Propio[,75]==0),])
-trainROS_Propio <- rbind(trainROS_Propio, train[sample(which(trainROS_Propio[,75]==1), length(which(trainROS_Propio[,75]==1))/2.5),]) 
-
-crossvalidation5(trainROS_Propio[,-var[1:25]]) # 0.6458915
-prediccionTest(trainROS_Propio[,-var[1:25]], test)
-
-# Gráfico para ver el acierto sobre train (Mejora el acierto de la clase 0 pero se reducen en la dos)
-prediccionesFinal <- prediccionTest(trainROS_Propio[,-var[1:25]], train)
-
-ggplot2::ggplot()+
-  geom_col(aes(x=0:3, y=as.data.frame(table(train[,75]))[,2], fill="Original"), alpha=.8) + 
-  geom_col(aes(x=0:3, y=as.data.frame(diag(table(train[,75], prediccionesFinal)))[,1], fill="Predicciones"), alpha=.8) +
-  scale_fill_discrete("Datos") +
-  labs(x = "Clase", y = "Valores")
-
 ```
 
-## Modelos 
-
 ```{r}
-data <- train
+print("*********************** Amelia 5 + IPF")
+require(mice)
+require(caret)
+valoresPreprocesados <- caret::preProcess(data.imputed[["amelia"]]$imputations$imp5,method=c("center","scale"))
+valoresTransformados <- predict(valoresPreprocesados,data.imputed[["amelia"]]$imputations$imp5)
+
+datos <- valoresTransformados
+datos$C <- as.factor(datos$C)
+data.outlier[["ameliaIpf"]] <- ipfFilter(datos)
+writeData(data.outlier[["ameliaIpf"]], path = "datosFiltrados/", "ameliaIpf")
+
+data <- data.outlier[["ameliaIpf"]]
 data$C <- as.factor(data$C)
 trees <- crear_arbol(datos = data, "C")
 print_diagnostic(trees, trees[[const$sets]])
+
+print("*********************** Amelia 5 + IPF + SMOTE")
+
+datos <- data.outlier[["ameliaIpf"]]
+datos$C <- as.factor(datos$C)
+n<-ncol(datos)
+output<-datos$C
+input<-datos[ ,-n]
+#balance the dataset
+data<-ubBalance(X= input, Y=output, type="ubSMOTE", percOver=300, percUnder=150, verbose=TRUE)
+combinations[["ameliaIpfSmote"]]<-cbind(data$X,"C" = data$Y)
+writeData(combinations[["ameliaIpfSmote"]], path = "datosFiltrados/", "ameliaIpfSmote")
+
+data <- combinations[["ameliaIpfSmote"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+#$treeC45
+#$treeC45$accuracy
+#[1] 0.9681316
 ```
+
+
 
 
 
