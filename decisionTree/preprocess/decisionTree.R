@@ -125,14 +125,10 @@ print_diagnostic <- function (trees, sets) {
   results <- list()
   
   results[[const$treeRpart]] <- obtener_diagnostico(trees[[const$treeRpart]], trees[[const$sets]])
-  #results[[const$treeC50]] <- obtener_diagnostico(trees[[const$treeC50]], trees[[const$sets]])
+  results[[const$treeC50]] <- obtener_diagnostico(trees[[const$treeC50]], trees[[const$sets]])
   results[[const$treeTree]] <- obtener_diagnostico(trees[[const$treeTree]], trees[[const$sets]])
   results[[const$treePART]] <- obtener_diagnostico(trees[[const$treePART]], trees[[const$sets]])
-  
-  #results[[const$treeGradienrtBoostedMachine]] <- entrenar_arbol_gradientBoostingMachine(results[[const$sets]], objetivo, predictores)
-  #results[[const$treeForest]] <- obtener_diagnostico(trees[[const$treeForest]], trees[[const$sets]])
-  #results[[const$treeBagging]] <- obtener_diagnostico(trees[[const$treeBagging]], trees[[const$sets]])
-  #results[[const$treeC45]] <- obtener_diagnostico(trees[[const$treeC45]], trees[[const$sets]])
+  results[[const$treeC45]] <- obtener_diagnostico(trees[[const$treeC45]], trees[[const$sets]])
   
   return (results)
 }
@@ -145,16 +141,12 @@ print_tree <- function(objetivo, dtree) {
 crear_arbol <- function(datos, objetivo, predictores = ".", withPartitions = TRUE) {
   results <- list()
   
-  results[[const$sets]] <- ifelse(withPartitions == TRUE, crear_sets(datos), datos)
-  #results[[const$sets]] <- crear_sets(datos)
+  results[[const$sets]] <- crear_sets(datos)
   results[[const$treeRpart]] <- entrenar_arbol_rpart(results[[const$sets]], objetivo, predictores)
-  #results[[const$treeC50]] <- entrenar_arbol_c50(results[[const$sets]], objetivo, predictores)
+  results[[const$treeC50]] <- entrenar_arbol_c50(results[[const$sets]], objetivo, predictores)
   results[[const$treeTree]] <- entrenar_arbol_tree(results[[const$sets]], objetivo, predictores) 
   results[[const$treePART]] <- entrenar_arbol_PART(results[[const$sets]], objetivo, predictores)
-  #results[[const$treeGradienrtBoostedMachine]] <- entrenar_arbol_gradientBoostingMachine(results[[const$sets]], objetivo, predictores)
-  #results[[const$treeForest]] <- entrenar_arbol_randomForest(results[[const$sets]], objetivo, predictores)
-  #results[[const$treeBagging]] <- entrenar_arbol_bagging(results[[const$sets]], objetivo, predictores)
-  #results[[const$treeC45]] <- entrenar_arbol_c45(results[[const$sets]], objetivo, predictores)
+  results[[const$treeC45]] <- entrenar_arbol_c45(results[[const$sets]], objetivo, predictores)
   
   return (results)
 }

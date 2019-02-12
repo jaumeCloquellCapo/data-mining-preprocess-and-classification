@@ -17,11 +17,10 @@ library(ipred)
 library(RWeka)
 library(randomForest)
 library(gbm)
-knitr::opts_chunk$set(echo = TRUE)
-```
+#https://github.com/armijoalb/Master-Ciencias-de-Datos-UGR/blob/master/Miner%C3%ADa%20de%20datos.%20Preprocesamiento%20y%20clasificacion/practicas456/clasificacion/kaggle_arboles.Rmd
 
+#https://github.com/armijoalb/Master-Ciencias-de-Datos-UGR/blob/master/Miner%C3%ADa%20de%20datos.%20Preprocesamiento%20y%20clasificacion/preprocesamiento.pdf
 
-```{r}
 # Definimos el path de donde estemos trabajando.
 setwd(dirname(getActiveDocumentContext()$path))
 
@@ -29,6 +28,7 @@ setwd(dirname(getActiveDocumentContext()$path))
 for (file in list.files("preprocess")) {
   source(paste("preprocess/", file, collapse = NULL, sep = ""))
 }
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
@@ -158,12 +158,11 @@ Mice & KNN
 El paquete puede usarse para imputar valores perdidos sobre variables categóricas y continuas, usando un algoritmo específico de imputación conocido con el mismo nombre (MICE).
 
 ```{r}
-# Este paquete puede usarse para imputar valores perdidos en
-# variables de todo tipo
 library(mice)
 library(lattice)
 require(robCompositions)
 require(mice)
+library(Amelia)
 
 data.imputed <- list()
 datos <- train
@@ -193,10 +192,7 @@ writeData(data.imputed[["mean"]], path = "datosFiltrados/", "imputedMean")
 
 data.imputed[["knn"]] <- robCompositions::impKNNa(datos, primitive=TRUE) #Impute by Predictive Model
 writeData(data.imputed[["knn"]], path = "datosFiltrados/", "imputedKnn")
-```
 
-```{r}
-library(Amelia)
 data.imputed[["amelia"]] <- Amelia::amelia(datos,m=1, parallel="multicore",noms="C")
 writeData(data.imputed[["amelia"]]$imputations$imp1, path = "datosFiltrados/", "imputedAmelia")
 ```
@@ -523,45 +519,11 @@ ggplot2::ggplot()+
 
 ## Modelos 
 
-Using k-fold cross-validation to train and test the model
-
 ```{r}
-library(plyr)
-library(rpart)
-set.seed(123)
-form <- "C ~ ."
-datos <- train
-folds <- split(datos, cut(sample(1:nrow(datos)),10))
-errs <- rep(NA, length(folds))
-
-for (i in 1:length(folds)) {
- test <- ldply(folds[i], data.frame)
- train <- ldply(folds[-i], data.frame)
- tmp.model <- rpart(form , train, method = "class")
- tmp.predict <- predict(tmp.model, newdata = test, type = "class")
- conf.mat <- table(test$Species, tmp.predict)
- errs[i] <- 1-sum(diag(conf.mat))/sum(conf.mat)
-}
-print(sprintf("average error using k-fold cross-validation: %.3f percent", 100*mean(errs)))
-```
-
-k-fold cross-validation with C5.0
-
-```{r}
-library(C50)
-library(plyr)
-errs.c50 <- rep(NA, length(folds))
-form <- "C ~ ."
-folds <- split(datos, cut(sample(1:nrow(datos)),10))
-for (i in 1:length(folds)) {
- test <- ldply(folds[i], data.frame)
- train <- ldply(folds[-i], data.frame)
- tmp.model <- C5.0(as.formula(form), train)
- tmp.predict <- predict(tmp.model, newdata=test)
- conf.mat <- table(test$Species, tmp.predict)
- errs.c50[i] <- 1 - sum(diag(conf.mat))/sum(conf.mat)
-}
-print(sprintf("average error using k-fold cross validation and C5.0 decision tree algorithm: %.3f percent", 100*mean(errs.c50)))
+data <- train
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
 ```
 
 
