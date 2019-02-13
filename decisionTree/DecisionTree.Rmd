@@ -394,11 +394,55 @@ data$C <- as.factor(data$C)
 trees <- crear_arbol(datos = data, "C")
 print_diagnostic(trees, trees[[const$sets]])
 
+#### Best solution for now (Amelia 5 + IPF + SMOTE")
 #$treeC45
 #$treeC45$accuracy
 #[1] 0.9681316
 ```
 
+```{r}
+sets <- list()
+sets[[const$train]] <- combinations[["ameliaIpfSmote"]]
+sets[[const$test]] <- original.dataset$test
+m <- entrenar_arbol_c45(sets, "C")
+KaggleWiteData(1:dim(sets[[const$test]])[1], m$prediction, path = "predictions/")
+```
+
+```{r}
+sets <- list()
+sets[[const$train]] <- ultimatraining[,2:dim(ultimatraining)[2]]
+sets[[const$test]] <- ultimotest[,2:dim(ultimotest)[2]]
+sets[[const$train]]$C <- as.factor(sets[[const$train]]$C)
+m <- entrenar_arbol_c45(sets, "C")
+KaggleWiteData(1:dim(ultimotest[,2:dim(ultimotest)[2]])[1], m$prediction, path = "predictions/")
+```
+
+
+```{r}
+library(RWeka)
+library(caret)
+hr_base_model <- rpart(C ~ ., data = ultimatraining[,2:dim(ultimatraining)[2]], method = "class",
+                       control = rpart.control(cp = 0))
+summary(hr_base_model)
+#Plot Decision Tree
+plot(hr_base_model)
+# Examine the complexity plot
+printcp(hr_base_model)
+plotcp(hr_base_model)
+
+test$pred <- predict(hr_base_model, ultimotest[,2:dim(ultimotest)[2]], type = "class")
+base_accuracy <- mean(test$pred == test$left)
+
+
+#Postpruning
+# Prune the hr_base_model based on the optimal cp value
+hr_model_pruned<- prune(hr_base_model, cp= hr_base_model$cptable[which.min(hr_base_model$cptable[,"xerror"]),"CP"])
+#hr_model_pruned <- prune(hr_base_model, cp = 0.0047 )
+# Compute the accuracy of the pruned tree
+test$pred <- predict(hr_model_pruned, test, type = "class")
+accuracy_postprun <- mean(test$pred == test$left)
+KaggleWiteData(1:dim(ultimotest[,2:dim(ultimotest)[2]])[1], test$pred, path = "predictions/")
+```
 
 
 
