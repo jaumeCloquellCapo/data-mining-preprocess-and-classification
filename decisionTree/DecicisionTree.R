@@ -1,4 +1,7 @@
-# Librerias R
+library(randomForest)
+library(NoiseFiltersR)
+library(kknn)
+library(tree)
 library(rpart)
 library(rstudioapi)
 library(tree)
@@ -7,7 +10,10 @@ library(partykit)
 library(dplyr)
 library(party)
 library(caret)
-
+library(ipred)
+library(RWeka)
+library(randomForest)
+library(gbm)
 # Definimos el path de donde estemos trabajando.
 setwd(dirname(getActiveDocumentContext()$path))
 
@@ -16,122 +22,87 @@ for (file in list.files("preprocess")) {
   source(paste("preprocess/", file, collapse = NULL, sep = ""))
 }
 
-#Lectura de datos
-dataset <- readData(files = c("train.csv", "test.csv"))
-dataset$train$C <- as.factor(dataset$train$C)
+out_univ <- function(i, train){
+  x = train[,i]
+  cuantiles <- quantile(x, c(0.25,0.75))
+  iqr = IQR(x)
+  x[x < cuantiles[1]-5*iqr | x > cuantiles[2]+5*iqr ] <- NA
+  return(x)
+}
 
-#Dimensiones de la train
-summary(dataset$train) 
-## Todas las variables tienen Missing Values y además nos ncontramos cpn outliers ne la mayoría de ellos. x1,x2,x3...
+filtrar_univ <- function(train){
+  sapply(1:50, out_univ, train)
+}
 
-dim(dataset$train) #Tenemos 9144 instancias con 50 atributos y una clase binaria.
-str(dataset$train) #Todas las variables son numéricas
+filtrar_IPC <- function(train){
+  filtrado <- IPF(C ~ ., train, s = 2)
+  return(as.data.frame(filtrado$cleanData))
+}
 
-#1. DESBALANCEO
-table(dataset$train$C)
-
-####################
-##    DEPURACIÓN  ##
-####################
-
-## N.A
-
-## Estudio de los N.A
-
-# Numero de Missing values
-apply(dataset$train,2,function(x){
-  sum(is.na(x))/length(x)*100
-}) %>% sort
-
-## Todas la variables tienen N.A [20%, 54%]
-# Variables con más N.A
-#X9 -> 54%
-#X32 -> 44%
-#X40 -> 41%
-
-# Tatamiento de los missign Values
-
-## If a variable has less than 50% missing values, imputation or prediction might be a viable option.
-## If a variable has more than 50% missing values, drop the variable because you don’t have enough information to ascertain anything useful. 
-dataset$inputed <- subset(dataset$train, select = -c(X9))
-
-set.seed(81)
-iris.mis <- prodNA(dataset$inputed, noNA = 0.2)
-summary(iris.mis)
-iris.imp <- missForest(iris.mis, xtrue = iris, verbose = TRUE)
-
-# Selección de variables, reducción de dimensionalidad
-
-# TDetección outliers
+outlier_imput <- function(i, test, train){
+  x <- train[,i]
+  y <- test[,i]
+  cuantiles <- quantile(x, c(0.25, 0.75))
+  iqr <- IQR(x)
+  y[y < cuantiles[1]-5*iqr | y > cuantiles[2]+5*iqr ] <- NA
+  formula <- paste("X", i, "~.", sep = "")
+  modelo <- kknn(formula, train, test)
+  y[is.na(y)] <- modelo$fitted.values[is.na(y)]
+  return(y)
+}
 
 
-########################
-##    TRANSFORMACIÓN  ##
-########################
-
-# Normalización ?
-# si aplicamos K-means como métodos de discretización, es necesario normalizar y escalar los datos
-
-#Se aplica el centrado y escalado sobre el conjunto de datos, una vez eliminados los valores perdidos
-valoresPreprocesados <- caret::preProcess(dataset$test[, -c(dim(dataset$train)[2] - 1)],method=c("center","scale"))
-dataset$train[, -c(dim(dataset$train)[2] - 1)] <- predict(valoresPreprocesados,dataset$train[, -c(dim(dataset$train)[2] - 1)])
-
+FS_forest_importance <- function(formula, x, k=5, imp = 1){
+  weights <- FSelector::random.forest.importance(formula,x, importance.type = imp)
+  subset <- FSelector::cutoff.k(weights,k)
   
-#####################
-## DISCRETIZACIÓN  ##
-##################### 
-  
-#Discretizamos las variables continuas con modelos no supervisados
-#dataset$train[,1] <- myDiscretization(dataset$train, method = 2)
+  Y <- x[,51]
+  return(cbind(x[,subset], Y))
+}
 
-#####################
-##     MODELO     ##
-##################### 
+limpieza_total_test <- function(train, test, iter = 1){
+  for(i in 1:iter){
+    test <- as.data.frame(sapply(1:50, outlier_imput, test, train))
+    colnames(test) <- paste("X",1:50, sep = "")
+  }
+  return(test)
+}
 
-# construye el modelo
+limpieza_total_train <- function(train, iter = 1){
+  train <- rfImpute(C ~ ., train, iter = 3)
+  for(i in 1:iter){
+    train[,2:51] <- filtrar_univ(train[,2:51])
+    train <- rfImpute(C ~., train, iter = 3)
+  }
+  train <- filtrar_IPC(train)
+  return(train)
+}
 
-ct <- ctree(C~., dataset$train)
-cpus.ltr.cv <- cv.tree(ct, fun = prune.tree, K = 10)
-print(ct)
-plot(ct)
+## función final
 
-# se realiza la prediccion
-test_predict <- predict(ct, dataset$test)
+original.dataset <- readData()
+dataCleaned <- list()
 
-# Classification Tree with rpart
-library(rpart)
+train <- original.dataset$train
+test <- original.dataset$test
+train$C <- as.factor(train$C)
 
-# grow tree 
-fit <- rpart(C~., method="class", data=dataset$train)
-summary(fit, cp = 0.06)
-printcp(fit) # display the results 
-plotcp(fit) # visualize cross-validation results 
-summary(fit) # detailed summary of splits
-rpart.plot(fit)
-rpart.rules(fit)
+dataCleaned[["train"]] <- limpieza_total_train(train, 3)
+dataCleaned[["test"]] <- limpieza_total_test(dataCleaned[["train"]], test)
 
-# plot tree 
-plot(fit, uniform=TRUE, 
-     main="Classification Tree for Kyphosis")
-text(fit, use.n=TRUE, all=TRUE, cex=.8)
+#Create tree model
+trees <- tree(C~., dataCleaned[["train"]] )
+plot(trees)
+text(trees, pretty=0)
 
-# prune the tree 
-pfit<- prune(fit, cp=fit$cptable[which.min(fit$cptable[,"xerror"]),"CP"])
+#Cross validate to see whether pruning the tree will improve performance
+cv.trees <- cv.tree(trees)
+plot(cv.trees)
 
-# plot the pruned tree 
-plot(pfit, uniform=TRUE, 
-     main="Pruned Classification Tree for Kyphosis")
-text(pfit, use.n=TRUE, all=TRUE, cex=.8)
+prune.trees <- prune.tree(trees, best=4)
+plot(prune.trees)
+text(prune.trees, pretty=0)
 
-
-# Random Forest prediction of Kyphosis data
-library(randomForest)
-fit <- randomForest(C~.,data=dataset$train, na.action=na.omit)
-print(fit) # view results 
-importance(fit) # importance of each predictor
-
-
-# Conditional Inference Tree for Kyphosis
-library(party)
-fit <- ctree(C~.,data=trainData)
-plot(fit, main="Conditional Inference Tree for Kyphosis",varlen=3)
+yhat <- predict(prune.trees, dataCleaned[["test"]] )
+plot(yhat, dataCleaned[["test"]]$C)
+abline(0,1)
