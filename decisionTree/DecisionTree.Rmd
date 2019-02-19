@@ -485,3 +485,14 @@ KaggleWiteData(1:dim(cleantest[,2:dim(cleantest)[2]])[1], test$pred, path = "pre
 
 
 
+=======
+Mejoras
+https://gist.githubusercontent.com/marcoalt/2705ae01c9abee028ba7/raw/108e89851eca190ebf7968e86b235c8a883c70a9/physionet_imbalanced_oversampled_good.R
+http://r-statistics.co/Outlier-Treatment-With-R.html
+https://www.analyticsvidhya.com/blog/2016/03/practical-guide-deal-imbalanced-classification-problems/
+
+Red color represents oversampling curve
+Green color represents undersampling curve
+Blue color represents both sampling curve
+
+https://github.com/t-redactyl/Blog-posts/blob/master/2015-10-13-manually-calculating-k-folds-cross-validation.Rmd
