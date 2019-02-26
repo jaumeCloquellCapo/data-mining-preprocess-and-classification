@@ -183,6 +183,6 @@ FS_forest_importance <- function(formula, x, k=5, imp = 1){
   subset <- FSelector::cutoff.k(weights,k)
   
   Y <- x[,51]
-  return(cbind(x[,subset], Y))
+  return(cbind(x[,..subset], Y))
 }
 
