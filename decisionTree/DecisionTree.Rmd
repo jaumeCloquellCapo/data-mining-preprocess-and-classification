@@ -145,7 +145,7 @@ Por último, en nuestro proceso de análisis exploratorio, se realizó un gráfi
 
 ```{r}
 library(ggplot2)
-ggplot(final, aes(C)) + geom_bar()
+ggplot(train, aes(C)) + geom_bar()
 ```
 
 ## 2.2 Preprocesado
