@@ -207,7 +207,15 @@ datos <- train
 datos$C <- as.factor(datos$C)
 data.outlier[["ipf"]] <- ipfFilter(datos)
 writeData(data.outlier[["ipf"]], path = "datosFiltrados/", "noiseIpf")
+
+data.outlier <- list()
+datos <- train
+datos$C <- as.factor(datos$C)
+data.outlier[["iqr"]] <- iqrFilter(datos)
+writeData(data.outlier[["iqr"]], path = "datosFiltrados/", "noiseIqr")
+
 ```
+
 
 
 ### 2.2.3 Selección de características
@@ -260,6 +268,7 @@ trees <- crear_arbol(datos = data, "C")
 print_diagnostic(trees, trees[[const$sets]])
 
 ############ Amelia
+
 print("*********************** Amelia 1")
 data <- data.imputed[["amelia"]]$imputations$imp1
 data$C <- as.factor(data$C)
@@ -283,11 +292,18 @@ print_diagnostic(trees, trees[[const$sets]])
 
 ############ SELECCIÓN DE VARIABLES
 
-
 ############ IPF
 
 print("*********************** IPF")
 data <- data.outlier[["ipf"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+############ IQR
+
+print("*********************** IQR")
+data <- data.outlier[["iqr"]]
 data$C <- as.factor(data$C)
 trees <- crear_arbol(datos = data, "C")
 print_diagnostic(trees, trees[[const$sets]])
@@ -360,7 +376,28 @@ print_diagnostic(trees, trees[[const$sets]])
 
 ```
 
+
 ```{r}
+
+############ IQR
+
+print("*********************** Amelia 5 + IPF")
+require(mice)
+require(caret)
+valoresPreprocesados <- caret::preProcess(data.imputed[["amelia"]]$imputations$imp5,method=c("center","scale"))
+valoresTransformados <- predict(valoresPreprocesados,data.imputed[["amelia"]]$imputations$imp5)
+
+datos <- valoresTransformados
+datos$C <- as.factor(datos$C)
+data.outlier[["ameliaIqr"]] <- iqrFilter(datos)
+writeData(data.outlier[["ameliaIqr"]], path = "datosFiltrados/", "ameliaIqr")
+
+data <- data.outlier[["ipf"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+
 print("*********************** Amelia 5 + IPF")
 require(mice)
 require(caret)
@@ -394,16 +431,64 @@ data$C <- as.factor(data$C)
 trees <- crear_arbol(datos = data, "C")
 print_diagnostic(trees, trees[[const$sets]])
 
+#### Best solution for now (Amelia 5 + IPF + SMOTE")
 #$treeC45
 #$treeC45$accuracy
 #[1] 0.9681316
 ```
 
+```{r}
+sets <- list()
+sets[[const$train]] <- combinations[["ameliaIpfSmote"]]
+sets[[const$test]] <- original.dataset$test
+m <- entrenar_arbol_c45(sets, "C")
+KaggleWiteData(1:dim(sets[[const$test]])[1], m$prediction, path = "predictions/")
+```
+
+```{r}
+sets <- list()
+sets[[const$train]] <- cleantrain[,2:dim(cleantrain)[2]]
+sets[[const$test]] <- cleantest[,2:dim(cleantest)[2]]
+sets[[const$train]]$C <- as.factor(sets[[const$train]]$C)
+m <- entrenar_arbol_c45(sets, "C")
+KaggleWiteData(1:dim(cleantest[,2:dim(cleantest)[2]])[1], m$prediction, path = "predictions/")
+```
+
+https://www.analyticsvidhya.com/blog/2016/03/practical-guide-deal-imbalanced-classification-problems/
+
+```{r}
+library(RWeka)
+library(caret)
+hr_base_model <- rpart(C ~ ., data = cleantrain[,2:dim(cleantrain)[2]], method = "class",
+                       control = rpart.control(cp = 0))
+summary(hr_base_model)
+#Plot Decision Tree
+plot(hr_base_model)
+# Examine the complexity plot
+printcp(hr_base_model)
+plotcp(hr_base_model)
+
+test$pred <- predict(hr_base_model, cleantest[,2:dim(cleantest)[2]], type = "class")
+base_accuracy <- mean(test$pred == test$left)
+
+
+#Postpruning
+# Prune the hr_base_model based on the optimal cp value
+hr_model_pruned<- prune(hr_base_model, cp= hr_base_model$cptable[which.min(hr_base_model$cptable[,"xerror"]),"CP"])
+#hr_model_pruned <- prune(hr_base_model, cp = 0.0047 )
+# Compute the accuracy of the pruned tree
+test$pred <- predict(hr_model_pruned, test, type = "class")
+accuracy_postprun <- mean(test$pred == test$left)
+KaggleWiteData(1:dim(cleantest[,2:dim(cleantest)[2]])[1], test$pred, path = "predictions/")
+```
+
+
+
+
+=======
 Mejoras
 https://gist.githubusercontent.com/marcoalt/2705ae01c9abee028ba7/raw/108e89851eca190ebf7968e86b235c8a883c70a9/physionet_imbalanced_oversampled_good.R
-
 http://r-statistics.co/Outlier-Treatment-With-R.html
-
 https://www.analyticsvidhya.com/blog/2016/03/practical-guide-deal-imbalanced-classification-problems/
 
 Red color represents oversampling curve
@@ -411,5 +496,3 @@ Green color represents undersampling curve
 Blue color represents both sampling curve
 
 https://github.com/t-redactyl/Blog-posts/blob/master/2015-10-13-manually-calculating-k-folds-cross-validation.Rmd
-
-

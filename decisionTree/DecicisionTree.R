@@ -88,9 +88,10 @@ test <- original.dataset$test
 train$C <- as.factor(train$C)
 
 dataCleaned[["train"]] <- limpieza_total_train(train, 3)
-dataCleaned[["test"]] <- limpieza_total_test(dataCleaned[["train"]][2:51], test)
-writeData(dataCleaned[["train"]], path = "datosFiltrados/", "cleanTrainRfQuanIpc")
-writeData(dataCleaned[["test"]], path = "datosFiltrados/", "cleanTestRfQuanIpc")
+n<-ncol(dataCleaned[["train"]])
+input<-dataCleaned[["train"]][ ,-n]
+dataCleaned[["trainTomek"]]<- ubBalance(X= input, Y=dataCleaned[["train"]]$C, type="ubTomek")
+dataCleaned[["test"]] <- limpieza_total_test(dataCleaned[["train"]], test)
 
 
 
