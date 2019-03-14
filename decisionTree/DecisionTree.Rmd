@@ -17,9 +17,6 @@ library(ipred)
 library(RWeka)
 library(randomForest)
 library(gbm)
-#https://github.com/armijoalb/Master-Ciencias-de-Datos-UGR/blob/master/Miner%C3%ADa%20de%20datos.%20Preprocesamiento%20y%20clasificacion/practicas456/clasificacion/kaggle_arboles.Rmd
-
-#https://github.com/armijoalb/Master-Ciencias-de-Datos-UGR/blob/master/Miner%C3%ADa%20de%20datos.%20Preprocesamiento%20y%20clasificacion/preprocesamiento.pdf
 
 # Definimos el path de donde estemos trabajando.
 setwd(dirname(getActiveDocumentContext()$path))
@@ -155,10 +152,6 @@ ggplot(train, aes(C)) + geom_bar()
 
 Uno de los primeros problemas a los que nos hemos enfrentado para comenzar el preprocesamiento de los datos ha sido la existencia de valores perdidos (NAs) en el dataset.
 
-Mice & KNN
-
-El paquete puede usarse para imputar valores perdidos sobre variables categóricas y continuas, usando un algoritmo específico de imputación conocido con el mismo nombre (MICE).
-
 ```{r}
 library(mice)
 library(lattice)
@@ -243,10 +236,6 @@ data<-ubBalance(X= input, Y=output, type="ubSMOTE", percOver=300, percUnder=150,
 data.balanced[["smote"]]<-cbind(data$X,"C" = data$Y)
 writeData(data.balanced[["smote"]], path = "datosFiltrados/", "smote")
 
-## Tomek Links
-#data<-ubTomek(X=input, Y= output)
-#data.balanced[["tomekLink"]]<-cbind(data$X, data$Y)
-#writeData(data.balanced[["tomekLink"]], path = "datosFiltrados/", "tomekLink")
 ```
 
 
@@ -286,11 +275,6 @@ data <- data.imputed[["amelia"]]$imputations$imp5
 data$C <- as.factor(data$C)
 trees <- crear_arbol(datos = data, "C")
 print_diagnostic(trees, trees[[const$sets]])
-
-
-
-
-############ SELECCIÓN DE VARIABLES
 
 ############ IPF
 
@@ -350,30 +334,6 @@ trees <- crear_arbol(datos = data, "C")
 print_diagnostic(trees, trees[[const$sets]])
 
 
-############ Tomek Links
-
-
-
-############ Tomek Links + SMOTE
-
-
-############ SMOTE + Tomek Links
-
-
-###########
-# 10. ROS #
-###########
-
-
-#################
-# 11. ROS + IPF #
-#################
-
-
-###########
-# 14. ENN #
-###########
-
 ```
 
 
@@ -431,10 +391,6 @@ data$C <- as.factor(data$C)
 trees <- crear_arbol(datos = data, "C")
 print_diagnostic(trees, trees[[const$sets]])
 
-#### Best solution for now (Amelia 5 + IPF + SMOTE")
-#$treeC45
-#$treeC45$accuracy
-#[1] 0.9681316
 ```
 
 ```{r}
@@ -445,54 +401,104 @@ m <- entrenar_arbol_c45(sets, "C")
 KaggleWiteData(1:dim(sets[[const$test]])[1], m$prediction, path = "predictions/")
 ```
 
-```{r}
-sets <- list()
-sets[[const$train]] <- cleantrain[,2:dim(cleantrain)[2]]
-sets[[const$test]] <- cleantest[,2:dim(cleantest)[2]]
-sets[[const$train]]$C <- as.factor(sets[[const$train]]$C)
-m <- entrenar_arbol_c45(sets, "C")
-KaggleWiteData(1:dim(cleantest[,2:dim(cleantest)[2]])[1], m$prediction, path = "predictions/")
-```
-
-https://www.analyticsvidhya.com/blog/2016/03/practical-guide-deal-imbalanced-classification-problems/
+Mejor resultado KAGGLE
 
 ```{r}
-library(RWeka)
-library(caret)
-hr_base_model <- rpart(C ~ ., data = cleantrain[,2:dim(cleantrain)[2]], method = "class",
+out_univ <- function(i, train){
+  x = train[,i]
+  cuantiles <- quantile(x, c(0.25,0.75))
+  iqr = IQR(x)
+  x[x < cuantiles[1]-5*iqr | x > cuantiles[2]+5*iqr ] <- NA
+  return(x)
+}
+
+filtrar_univ <- function(train){
+  sapply(1:50, out_univ, train)
+}
+
+filtrar_IPC <- function(train){
+  filtrado <- IPF(C ~ ., train, s = 2)
+  return(as.data.frame(filtrado$cleanData))
+}
+
+outlier_imput <- function(i, test, train){
+  x <- train[,i]
+  y <- test[,i]
+  cuantiles <- quantile(x, c(0.25, 0.75))
+  iqr <- IQR(x)
+  y[y < cuantiles[1]-5*iqr | y > cuantiles[2]+5*iqr ] <- NA
+  formula <- paste("X", i, "~.", sep = "")
+  modelo <- kknn(formula, train, test)
+  y[is.na(y)] <- modelo$fitted.values[is.na(y)]
+  return(y)
+}
+
+
+FS_forest_importance <- function(formula, x, k=5, imp = 1){
+  weights <- FSelector::random.forest.importance(formula,x, importance.type = imp)
+  subset <- FSelector::cutoff.k(weights,k)
+  
+  Y <- x[,51]
+  return(cbind(x[,subset], Y))
+}
+
+limpieza_total_test <- function(train, test, iter = 1){
+  for(i in 1:iter){
+    test <- as.data.frame(sapply(1:50, outlier_imput, test, train))
+    colnames(test) <- paste("X",1:50, sep = "")
+  }
+  return(test)
+}
+
+limpieza_total_train <- function(train, iter = 1){
+
+  train <- rfImpute(C~., train, iter = 1)
+  C<-as.factor(train$C)
+  for(i in 1:iter){
+    
+    train<-train[,-1]
+    train[,1:50] <- filtrar_univ(train[,1:50])
+    train<-cbind(train, C)
+    train <- rfImpute(C~., train, iter = 1)
+  }
+  
+  train <- filtrar_IPC(train)
+  return(train)
+}
+
+## función final
+
+original.dataset <- readData()
+dataCleaned <- list()
+
+train <- original.dataset$train
+test <- original.dataset$test
+train$C <- as.factor(train$C)
+
+dataCleaned[["train"]] <- limpieza_total_train(train, 1)
+#n<-ncol(dataCleaned[["train"]])
+#input<-dataCleaned[["train"]][ ,-n]
+##dataCleaned[["trainTomek"]]<- ubBalance(X= input, Y=dataCleaned[["train"]]$C, type="ubTomek")
+dataCleaned[["test"]] <- limpieza_total_test(dataCleaned[["train"]][,-1], test)
+
+hr_base_model <- rpart(C ~ ., data = dataCleaned[["train"]], method = "class",
                        control = rpart.control(cp = 0))
+pred <- predict(hr_base_model, dataCleaned[["test"]], type = "class")
+
 summary(hr_base_model)
+
 #Plot Decision Tree
-plot(hr_base_model)
+rpart.plot(hr_base_model)
+
 # Examine the complexity plot
 printcp(hr_base_model)
 plotcp(hr_base_model)
 
-test$pred <- predict(hr_base_model, cleantest[,2:dim(cleantest)[2]], type = "class")
-base_accuracy <- mean(test$pred == test$left)
-
-
-#Postpruning
-# Prune the hr_base_model based on the optimal cp value
-hr_model_pruned<- prune(hr_base_model, cp= hr_base_model$cptable[which.min(hr_base_model$cptable[,"xerror"]),"CP"])
-#hr_model_pruned <- prune(hr_base_model, cp = 0.0047 )
-# Compute the accuracy of the pruned tree
-test$pred <- predict(hr_model_pruned, test, type = "class")
-accuracy_postprun <- mean(test$pred == test$left)
-KaggleWiteData(1:dim(cleantest[,2:dim(cleantest)[2]])[1], test$pred, path = "predictions/")
+bestcp <- hr_base_model$cptable[which.min(hr_base_model$cptable[,"xerror"]),"CP"]
+bestcp
+hr_model_pruned<- prune(hr_base_model, cp= bestcp)
+rpart.plot(hr_model_pruned)
+pred <- predict(hr_model_pruned, dataCleaned[["test"]], type = "class")
+KaggleWiteData(1:dim(dataCleaned[["test"]])[1], pred, path = "predictions/")
 ```
 
-
-
-
-=======
-Mejoras
-https://gist.githubusercontent.com/marcoalt/2705ae01c9abee028ba7/raw/108e89851eca190ebf7968e86b235c8a883c70a9/physionet_imbalanced_oversampled_good.R
-http://r-statistics.co/Outlier-Treatment-With-R.html
-https://www.analyticsvidhya.com/blog/2016/03/practical-guide-deal-imbalanced-classification-problems/
-
-Red color represents oversampling curve
-Green color represents undersampling curve
-Blue color represents both sampling curve
-
-https://github.com/t-redactyl/Blog-posts/blob/master/2015-10-13-manually-calculating-k-folds-cross-validation.Rmd

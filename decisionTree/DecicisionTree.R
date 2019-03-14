@@ -69,11 +69,17 @@ limpieza_total_test <- function(train, test, iter = 1){
 }
 
 limpieza_total_train <- function(train, iter = 1){
-  train <- rfImpute(C ~ ., train, iter = 3)
+
+  train <- rfImpute(C~., train, iter = 1)
+  C<-as.factor(train$C)
   for(i in 1:iter){
-    train[,2:51] <- filtrar_univ(train[,2:51])
-    train <- rfImpute(C ~., train, iter = 3)
+    
+    train<-train[,-1]
+    train[,1:50] <- filtrar_univ(train[,1:50])
+    train<-cbind(train, C)
+    train <- rfImpute(C~., train, iter = 1)
   }
+  
   train <- filtrar_IPC(train)
   return(train)
 }
@@ -87,70 +93,31 @@ train <- original.dataset$train
 test <- original.dataset$test
 train$C <- as.factor(train$C)
 
-dataCleaned[["train"]] <- limpieza_total_train(train, 3)
-n<-ncol(dataCleaned[["train"]])
-input<-dataCleaned[["train"]][ ,-n]
-dataCleaned[["trainTomek"]]<- ubBalance(X= input, Y=dataCleaned[["train"]]$C, type="ubTomek")
-dataCleaned[["test"]] <- limpieza_total_test(dataCleaned[["train"]], test)
+dataCleaned[["train"]] <- limpieza_total_train(train, 1)
+#n<-ncol(dataCleaned[["train"]])
+#input<-dataCleaned[["train"]][ ,-n]
+##dataCleaned[["trainTomek"]]<- ubBalance(X= input, Y=dataCleaned[["train"]]$C, type="ubTomek")
+dataCleaned[["test"]] <- limpieza_total_test(dataCleaned[["train"]][,-1], test)
 
-
-
-library(C50)
-credit.fit <- C5.0(dataCleaned[["train"]], dataCleaned[["train"]]$C)
-credit.fit
-
-#Create tree model
-trees <- tree(C~., dataCleaned[["train"]] )
-plot(trees)
-text(trees, pretty=0)
-summary(trees)$used
-names(dataCleaned[["train"]])[which(!(names(dataCleaned[["train"]]) %in% summary(trees)$used))]
-
-trees <- tree(C ~ . -X2 -X32 -X17, dataCleaned[["train"]] )
-#Cross validate to see whether pruning the tree will improve performance
-cv.trees <- cv.tree(trees)
-plot(cv.trees)
-
-prune.trees <- prune.tree(trees, best=10)
-plot(prune.trees)
-text(prune.trees, pretty=0)
-
-yhat <- predict(prune.trees, dataCleaned[["test"]], type = "class")
-plot(yhat, dataCleaned[["test"]]$C)
-abline(0,1)
-
-KaggleWiteData(1:dim(test)[1], yhat, "predictions/")
-
-## priobamos con selector de variables
-
-
-library(RWeka)
-library(caret)
-
-originalCleantrain <- read.csv("datosFiltrados/cleantrain.csv", header = T, sep = ",", na.strings = c("?","NA",".",""))
-originalCleantest <- read.csv("datosFiltrados/cleantest.csv", header = T, sep = ",", na.strings = c("?","NA",".",""))
-cleantrain <- originalCleantrain[,2:dim(originalCleantrain)[2]]
-cleantest <- originalCleantest[,2:dim(originalCleantest)[2]]
-cleantrain$C <- as.factor(cleantrain$C)
-
-library(unbalanced)
-n<-ncol(cleantrain)
-output<-cleantrain$C
-input<-cleantrain[ ,-n]
-
-data<-ubTomek(X = input, Y = output)
-data<-cbind(data$X, "C" = data$Y)
-
-data[,1:50] <- filtrar_univ(data[,1:50])
-data <- rfImpute(C ~., data, iter = 3)
-cleantrain <- data
-
-hr_base_model <- rpart(C ~ ., data = cleantrain, method = "class",
+hr_base_model <- rpart(C ~ ., data = dataCleaned[["train"]], method = "class",
                        control = rpart.control(cp = 0))
+pred <- predict(hr_base_model, dataCleaned[["test"]], type = "class")
+
+summary(hr_base_model)
+
+#Plot Decision Tree
+rpart.plot(hr_base_model)
+
+# Examine the complexity plot
 printcp(hr_base_model)
+plotcp(hr_base_model)
+
 bestcp <- hr_base_model$cptable[which.min(hr_base_model$cptable[,"xerror"]),"CP"]
 bestcp
 hr_model_pruned<- prune(hr_base_model, cp= bestcp)
-test$pred <- predict(hr_model_pruned, test, type = "class")
-accuracy_postprun <- mean(test$pred == test$left)
-KaggleWiteData(1:dim(cleantest)[1], test$pred, path = "predictions/")
+rpart.plot(hr_model_pruned)
+pred <- predict(hr_model_pruned, dataCleaned[["test"]], type = "class")
+KaggleWiteData(1:dim(dataCleaned[["test"]])[1], pred, path = "predictions/")
+
+
+
