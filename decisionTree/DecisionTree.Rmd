@@ -1,0 +1,504 @@
+---
+title: "DecisiónTree"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tree)
+library(rpart)
+library(rstudioapi)
+library(tree)
+library(rJava)
+library(partykit)
+library(dplyr)
+library(party)
+library(caret)
+library(ipred)
+library(RWeka)
+library(randomForest)
+library(gbm)
+
+# Definimos el path de donde estemos trabajando.
+setwd(dirname(getActiveDocumentContext()$path))
+
+# Librerias propias
+for (file in list.files("preprocess")) {
+  source(paste("preprocess/", file, collapse = NULL, sep = ""))
+}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Load Data
+```{r}
+#Lectura de datos
+original.dataset <- readData()
+#original.dataset$train[,-1] <- scale(original.dataset$train[,-1])
+#original.dataset$test[,-1] <- scale(original.dataset$test[,-1])
+
+train <- original.dataset$train
+test <- original.dataset$test
+#train$C <- as.factor(train$C)
+```
+
+
+# 1. Definición del dataset 
+
+
+# 2. Proceso exploratorio y pre-procesado
+
+El capítulo comienza detallando el proceso exploratorio inicial para continuar con el grueso de la memoria, la especificación de los procesos de pre-procesado llevados a cabo y la solución final aportada.
+
+## 2.1 Proceso exploratorio
+
+En esta sección detallamos el proceso exploratorio seguido para obtener más información del problema y de los datos que tenemos entre manos. Los pasos seguidos en este proceso serían:
+
+### 2.1.1 Estudio de los datos y dimensiones
+
+El primer paso para enfrentarnos a los datos era conocer la dimensionalidad y el tipo de datos. Por ello, hicimos uso de los comandos describe y str, para comprobar como eran estos datos y sus distribuciones.
+
+```{r}
+head(train)
+```
+
+El conjunto de datos de entrenamiento está formado por 9144 observaciones con 51 variables además de la clase catalogada como C y que puede tomar dos valores distintos (0,1). Las variables de entrenamiento, tienen todas valores numéricos continuos.
+
+
+### 2.1.2 Valores perdidos
+
+Al usar estudiar las distribuciones de los datos en el punto anterior descubrimos la existencia de valores perdidos en todas las variables. Para ver si este problema era muy acentuado se creó una función que nos ofrece el número de valores perdidos de un dataset por variables con diversos estadísticos. Tras obtener estos valores se representaron gráficamente para ver cuantos eran estos valores perdidos en función de la variable y el conjunto de train (figura 3.1).
+
+Este gráfico nos llevo a comprobar que los valores perdidos no siguen patrones sino que son valores perdidos que parecen haber sido añadidos aleatoriamente o pertenecer a fallos en la toma de datos. La variable X9, es la que tiene un mayor número de missing values, seguidos por X40 y X13. A pesar de todo, no existe una diferencia significativa entre ello.
+
+```{r}
+library(VIM)
+library(finalfit)
+aggr_plot <- aggr(train, numbers=TRUE, sortVars=TRUE, labels=names(train), cex.axis=.7, gap=3, ylab=c("Histogram of missing data Train","Pattern"), prop = T)
+train %>% missing_plot()
+```
+
+La siguiente secuencia de acciones determina el porcentaje de variables con valores perdidos en una instancia. Este porcentaje sirve para descartar instancias en que el porcentaje supera un cierto límite. Como observamos en los resultados todas las instancias necesitan ser filtradas.
+
+```{r}
+library(parallel)
+system.time(res1 <- apply(train, 1, function(x) sum(is.na(x))) / ncol(train) * 100)
+cores <- detectCores()
+cluster <- makeCluster(cores-2)
+system.time(res2 <- parRapply(cluster, train, function(x) sum(is.na(x)))/ncol(train)*100)
+names(res2) <- NULL
+stopCluster(cluster)
+mal <- (res1 > 5)
+filtrados <- train[!mal,]
+cat("Instancias archivo original: ",nrow(train)," instancias en filtrado: ",nrow(filtrados),"\n")
+
+#writeData(filtrados, path = "datosFiltrados/", "datosFiltrados")
+```
+
+
+###  2.1.3 Correlaciones: 
+
+El tener tantas variables  y tanta presencia de valores perdidos hizo interesante la obtención de correlaciones para comprobar si podemos eliminar variables en pos de otras o imputar los valores perdidos con los de otra variable muy correlada. Para ello, usamos la función corrplot. El resultado podemos verlo en la figura 3.4 y descubrimos que la variable x41 tiene correlacion de 1 con la x48 siendo una el resultado del producto de la otra.
+
+```{r}
+# Compruebo los valores perdidos mediante mi función
+perdidosTrain <- valoresPerdidos(train)
+perdidosTest <- valoresPerdidos(test)
+variablesNumericas <- sapply(1:dim(train)[2], function(x) is.numeric(train[,x]))
+correlaciones <- cor(train[-perdidosTrain$`Instancias con perdidos`,variablesNumericas])
+correlacionesFuertes <- sapply(1:dim(correlaciones)[2], function(x) any(correlaciones[-x,x]>0.4 | correlaciones[-x,x]<(-0.4) ))
+library(corrplot)
+corrplot::corrplot(correlaciones[correlacionesFuertes,correlacionesFuertes], type="lower", diag = FALSE)
+
+
+```
+
+
+```{r}
+library(GGally)
+## Create data frame indicating missingness by 1
+x <- as.data.frame(abs(is.na(train)))
+## Select columns with some (but not all) missing values
+y <- x[,sapply(x, sd) > 0]
+
+## Create a correlation matrix: Variables missing together have high correlation
+cor(y)
+cor(train, y, use = "pairwise.complete.obs")
+ggcorr(train, method = c("pairwise.complete.obs", "pearson"))
+```
+
+###  2.1.4 Outliers: 
+
+Dado el volumen del problema, se llevó a cabo un estudio de outliers univariate básico basado en distancia intercuartil (IQR). Para que este proceso obtenga buenos resultados, se escalaron las variables y se analizaron solo aquellas cuyo dominio es continuo. Los resultados para las variables 1:30 pueden verse en el gráfico 3.5 mientras que las variables 31:70 pueden verse en el gráfico 3.6.
+
+```{r}
+# se aplica el centrado y escalado sobre el conjunto de datos, una vez eliminados los valores perdidos
+valoresPreprocesados <- caret::preProcess(train,method=c("center","scale"))
+
+```
+
+## 2.1.5 Distribución clases:
+
+Por último, en nuestro proceso de análisis exploratorio, se realizó un gráfico de distribución de variables para comprobar si estamos ante un problema de clases balanceadas o en su defecto no balanceadas. El resultado puede verse en el gráfico 3.7, donde queda constatado que estamos ante un problema donde la clase 0 y la 1 están en clara desventaja por lo que habrá que usar técnicas de oversampling o undersampling
+
+```{r}
+library(ggplot2)
+ggplot(train, aes(C)) + geom_bar()
+```
+
+## 2.2 Preprocesado
+
+
+### 2.2.1 Imputación de valores perdidos
+
+Uno de los primeros problemas a los que nos hemos enfrentado para comenzar el preprocesamiento de los datos ha sido la existencia de valores perdidos (NAs) en el dataset.
+
+```{r}
+library(mice)
+library(lattice)
+require(robCompositions)
+require(mice)
+library(Amelia)
+
+data.imputed <- list()
+datos <- train
+
+# se determina el numero de instancias sin datos perdidos y con datos
+# perdidos. A observar la comodidad de uso de las funciones ncc e nic
+completos <- mice::ncc(datos)
+incompletos <- mice::nic(datos)
+cat("Datos completos: ",completos, " e incompletos: ",incompletos,"\n")
+# se realiza la imputacion
+m <- 5 #Impute by Average
+imputados.pmm <- mice::mice(datos, m=m, meth="pmm")
+data.imputed[["pmm"]] <- mice::complete(imputados.pmm)
+writeData(data.imputed[["pmm"]], path = "datosFiltrados/", "imputedPmm")
+
+imputados.rf <- mice::mice(datos, m=m, meth="rf", ntree = 3)
+data.imputed[["rf"]] <- mice::complete(imputados.rf)
+writeData(data.imputed[["rf"]], path = "datosFiltrados/", "imputedRf")
+
+data.imputed[["knnCustom"]] <- imputacionKnnTotal(datos)
+writeData(data.imputed[["knnCustom"]], path = "datosFiltrados/", "imputedKnnCustom")
+
+imputados.mean <- mice::mice(datos, m=m, meth="mean") #Impute by Average
+data.imputed[["mean"]] <- mice::complete(imputados.mean)
+writeData(data.imputed[["mean"]], path = "datosFiltrados/", "imputedMean")
+
+
+data.imputed[["knn"]] <- robCompositions::impKNNa(datos, primitive=TRUE) #Impute by Predictive Model
+writeData(data.imputed[["knn"]]$xImp, path = "datosFiltrados/", "imputedKnn")
+
+data.imputed[["amelia"]] <- Amelia::amelia(datos,m=5, parallel="multicore",noms="C")
+write.amelia(obj=data.imputed[["amelia"]], file.stem = "datosFiltrados/imputedAmelia")
+```
+
+### 2.2.3 Outliers
+
+```{r}
+data.outlier <- list()
+datos <- train
+datos$C <- as.factor(datos$C)
+data.outlier[["ipf"]] <- ipfFilter(datos)
+writeData(data.outlier[["ipf"]], path = "datosFiltrados/", "noiseIpf")
+
+data.outlier <- list()
+datos <- train
+datos$C <- as.factor(datos$C)
+data.outlier[["iqr"]] <- iqrFilter(datos)
+writeData(data.outlier[["iqr"]], path = "datosFiltrados/", "noiseIqr")
+
+```
+
+
+
+### 2.2.3 Selección de características
+
+Este apartado va a tratar sobre los procesos y técnicas que hemos seguido para realizar selección de características. La selección de características o atributos consiste en seleccionar un subconjunto relevante de características para poder construir un modelo
+```{r}
+datos <- train
+selector.random.forest(datos)
+selector.chiSquare(datos)
+```
+
+### 2.2.3 Oversampliung undersampling
+
+```{r}
+data.balanced <- list()
+#smote 
+library(unbalanced)
+datos <- train
+datos$C <- as.factor(datos$C)
+n<-ncol(datos)
+output<-datos$C
+input<-datos[ ,-n]
+#balance the dataset
+data<-ubBalance(X= input, Y=output, type="ubSMOTE", percOver=300, percUnder=150, verbose=TRUE)
+data.balanced[["smote"]]<-cbind(data$X,"C" = data$Y)
+writeData(data.balanced[["smote"]], path = "datosFiltrados/", "smote")
+
+```
+
+
+### 2.3 Combinación
+
+```{r}
+combinations <- list()
+############ Imputaciones
+print("*********************** RF")
+data <- data.imputed[["rf"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+print("*********************** KNN CUSTON")
+data <- data.imputed[["knnCustom"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+############ Amelia
+
+print("*********************** Amelia 1")
+data <- data.imputed[["amelia"]]$imputations$imp1
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+print("*********************** Amelia 3")
+data <- data.imputed[["amelia"]]$imputations$imp3
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+print("*********************** Amelia 5")
+data <- data.imputed[["amelia"]]$imputations$imp5
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+############ IPF
+
+print("*********************** IPF")
+data <- data.outlier[["ipf"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+############ IQR
+
+print("*********************** IQR")
+data <- data.outlier[["iqr"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+############ SMOTE
+
+print("*********************** Smote")
+data <- data.balanced[["smote"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+
+############# IPF + SMOTE
+print("*********************** IPF + Smote")
+
+datos <- data.outlier[["ipf"]]
+datos$C <- as.factor(datos$C)
+n<-ncol(datos)
+output<-datos$C
+input<-datos[ ,-n]
+#balance the dataset
+data<-ubBalance(X= input, Y=output, type="ubSMOTE", percOver=300, percUnder=150, verbose=TRUE)
+combinations[["ipfSmote"]]<-cbind(data$X,"C" = data$Y)
+writeData(combinations[["ipfSmote"]], path = "datosFiltrados/", "ipfSmote")
+
+data <- combinations[["ipfSmote"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+############# SMOTE + IPF
+
+print("*********************** SMOTE + IPF")
+
+datos <- data.balanced[["smote"]]
+datos$C <- as.factor(datos$C)
+combinations[["smoteIpf"]] <- ipfFilter(datos)
+writeData(combinations[["smoteIpf"]], path = "datosFiltrados/", "smoteIpf")
+
+data <- combinations[["ipfSmote"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+
+```
+
+
+```{r}
+
+############ IQR
+
+print("*********************** Amelia 5 + IPF")
+require(mice)
+require(caret)
+valoresPreprocesados <- caret::preProcess(data.imputed[["amelia"]]$imputations$imp5,method=c("center","scale"))
+valoresTransformados <- predict(valoresPreprocesados,data.imputed[["amelia"]]$imputations$imp5)
+
+datos <- valoresTransformados
+datos$C <- as.factor(datos$C)
+data.outlier[["ameliaIqr"]] <- iqrFilter(datos)
+writeData(data.outlier[["ameliaIqr"]], path = "datosFiltrados/", "ameliaIqr")
+
+data <- data.outlier[["ipf"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+
+print("*********************** Amelia 5 + IPF")
+require(mice)
+require(caret)
+valoresPreprocesados <- caret::preProcess(data.imputed[["amelia"]]$imputations$imp5,method=c("center","scale"))
+valoresTransformados <- predict(valoresPreprocesados,data.imputed[["amelia"]]$imputations$imp5)
+
+datos <- valoresTransformados
+datos$C <- as.factor(datos$C)
+data.outlier[["ameliaIpf"]] <- ipfFilter(datos)
+writeData(data.outlier[["ameliaIpf"]], path = "datosFiltrados/", "ameliaIpf")
+
+data <- data.outlier[["ameliaIpf"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+print("*********************** Amelia 5 + IPF + SMOTE")
+
+datos <- data.outlier[["ameliaIpf"]]
+datos$C <- as.factor(datos$C)
+n<-ncol(datos)
+output<-datos$C
+input<-datos[ ,-n]
+#balance the dataset
+data<-ubBalance(X= input, Y=output, type="ubSMOTE", percOver=300, percUnder=150, verbose=TRUE)
+combinations[["ameliaIpfSmote"]]<-cbind(data$X,"C" = data$Y)
+writeData(combinations[["ameliaIpfSmote"]], path = "datosFiltrados/", "ameliaIpfSmote")
+
+data <- combinations[["ameliaIpfSmote"]]
+data$C <- as.factor(data$C)
+trees <- crear_arbol(datos = data, "C")
+print_diagnostic(trees, trees[[const$sets]])
+
+```
+
+```{r}
+sets <- list()
+sets[[const$train]] <- combinations[["ameliaIpfSmote"]]
+sets[[const$test]] <- original.dataset$test
+m <- entrenar_arbol_c45(sets, "C")
+KaggleWiteData(1:dim(sets[[const$test]])[1], m$prediction, path = "predictions/")
+```
+
+Mejor resultado KAGGLE
+
+```{r}
+out_univ <- function(i, train){
+  x = train[,i]
+  cuantiles <- quantile(x, c(0.25,0.75))
+  iqr = IQR(x)
+  x[x < cuantiles[1]-5*iqr | x > cuantiles[2]+5*iqr ] <- NA
+  return(x)
+}
+
+filtrar_univ <- function(train){
+  sapply(1:50, out_univ, train)
+}
+
+filtrar_IPC <- function(train){
+  filtrado <- IPF(C ~ ., train, s = 2)
+  return(as.data.frame(filtrado$cleanData))
+}
+
+outlier_imput <- function(i, test, train){
+  x <- train[,i]
+  y <- test[,i]
+  cuantiles <- quantile(x, c(0.25, 0.75))
+  iqr <- IQR(x)
+  y[y < cuantiles[1]-5*iqr | y > cuantiles[2]+5*iqr ] <- NA
+  formula <- paste("X", i, "~.", sep = "")
+  modelo <- kknn(formula, train, test)
+  y[is.na(y)] <- modelo$fitted.values[is.na(y)]
+  return(y)
+}
+
+
+FS_forest_importance <- function(formula, x, k=5, imp = 1){
+  weights <- FSelector::random.forest.importance(formula,x, importance.type = imp)
+  subset <- FSelector::cutoff.k(weights,k)
+  
+  Y <- x[,51]
+  return(cbind(x[,subset], Y))
+}
+
+limpieza_total_test <- function(train, test, iter = 1){
+  for(i in 1:iter){
+    test <- as.data.frame(sapply(1:50, outlier_imput, test, train))
+    colnames(test) <- paste("X",1:50, sep = "")
+  }
+  return(test)
+}
+
+limpieza_total_train <- function(train, iter = 1){
+
+  train <- rfImpute(C~., train, iter = 1)
+  C<-as.factor(train$C)
+  for(i in 1:iter){
+    
+    train<-train[,-1]
+    train[,1:50] <- filtrar_univ(train[,1:50])
+    train<-cbind(train, C)
+    train <- rfImpute(C~., train, iter = 1)
+  }
+  
+  train <- filtrar_IPC(train)
+  return(train)
+}
+
+## función final
+
+original.dataset <- readData()
+dataCleaned <- list()
+
+train <- original.dataset$train
+test <- original.dataset$test
+train$C <- as.factor(train$C)
+
+dataCleaned[["train"]] <- limpieza_total_train(train, 1)
+#n<-ncol(dataCleaned[["train"]])
+#input<-dataCleaned[["train"]][ ,-n]
+##dataCleaned[["trainTomek"]]<- ubBalance(X= input, Y=dataCleaned[["train"]]$C, type="ubTomek")
+dataCleaned[["test"]] <- limpieza_total_test(dataCleaned[["train"]][,-1], test)
+
+hr_base_model <- rpart(C ~ ., data = dataCleaned[["train"]], method = "class",
+                       control = rpart.control(cp = 0))
+pred <- predict(hr_base_model, dataCleaned[["test"]], type = "class")
+
+summary(hr_base_model)
+
+#Plot Decision Tree
+rpart.plot(hr_base_model)
+
+# Examine the complexity plot
+printcp(hr_base_model)
+plotcp(hr_base_model)
+
+bestcp <- hr_base_model$cptable[which.min(hr_base_model$cptable[,"xerror"]),"CP"]
+bestcp
+hr_model_pruned<- prune(hr_base_model, cp= bestcp)
+rpart.plot(hr_model_pruned)
+pred <- predict(hr_model_pruned, dataCleaned[["test"]], type = "class")
+KaggleWiteData(1:dim(dataCleaned[["test"]])[1], pred, path = "predictions/")
+```
+
